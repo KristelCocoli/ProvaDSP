@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="sYUMYz" name="ProvaDSP" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" displaySplashScreen="1" jucerFormatVersion="1">
+              addUsingNamespaceToJuceHeader="0" displaySplashScreen="1" jucerFormatVersion="1"
+              cppLanguageStandard="20">
   <MAINGROUP id="JSiGbI" name="ProvaDSP">
     <GROUP id="{32109301-834A-F615-C6B0-1756E9F980D2}" name="Source">
       <FILE id="aallZJ" name="PluginProcessor.cpp" compile="1" resource="0"
