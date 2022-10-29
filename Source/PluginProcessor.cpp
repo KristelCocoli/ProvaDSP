@@ -1,8 +1,6 @@
 /*
   ==============================================================================
-
     This file contains the basic framework code for a JUCE plugin processor.
-
   ==============================================================================
 */
 
@@ -95,124 +93,19 @@ void ProvaDSPAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
- 
+    
     juce::dsp::ProcessSpec spec;
-
+    
     spec.maximumBlockSize = samplesPerBlock;
-
+    
     spec.numChannels = 1;
-
+    
     spec.sampleRate = sampleRate;
-
+    
     leftChain.prepare(spec);
     rightChain.prepare(spec);
     
-    
-    auto chainSettings = getChainSettings(apvts);
-
-    updatePeakFilter(chainSettings);
-
-    auto cutCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.lowCutFreq,sampleRate, 2*(chainSettings.lowCutSlope+1));
-    
-    auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
-    
-    leftLowCut.setBypassed<0>(true);
-    
-    leftLowCut.setBypassed<1>(true);
-
-    leftLowCut.setBypassed<2>(true);
-
-    leftLowCut.setBypassed<3>(true);
-
-    
-    switch (chainSettings.lowCutSlope) {
-        case Slope_12:
-        {
-            *leftLowCut.get<0>().coefficients = *cutCoefficients[0];
-            leftLowCut.setBypassed<0>(false);
-            break;
-        }
-        case Slope_24:
-        {
-            *leftLowCut.get<0>().coefficients = *cutCoefficients[0];
-            leftLowCut.setBypassed<0>(false);
-            *leftLowCut.get<1>().coefficients = *cutCoefficients[1];
-            leftLowCut.setBypassed<1>(false);
-            break;
-        }
-        case Slope_36:
-        {
-            *leftLowCut.get<0>().coefficients = *cutCoefficients[0];
-            leftLowCut.setBypassed<0>(false);
-            *leftLowCut.get<1>().coefficients = *cutCoefficients[1];
-            leftLowCut.setBypassed<1>(false);
-            *leftLowCut.get<2>().coefficients = *cutCoefficients[2];
-            leftLowCut.setBypassed<2>(false);
-            break;
-        }
-        case Slope_48:
-        {
-            *leftLowCut.get<0>().coefficients = *cutCoefficients[0];
-            leftLowCut.setBypassed<0>(false);
-            *leftLowCut.get<1>().coefficients = *cutCoefficients[1];
-            leftLowCut.setBypassed<1>(false);
-            *leftLowCut.get<2>().coefficients = *cutCoefficients[2];
-            leftLowCut.setBypassed<2>(false);
-            *leftLowCut.get<3>().coefficients = *cutCoefficients[3];
-            leftLowCut.setBypassed<3>(false);
-            break;
-        }
-    }
-    
-    auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
-    
-    rightLowCut.setBypassed<0>(true);
-    
-    rightLowCut.setBypassed<1>(true);
-
-    rightLowCut.setBypassed<2>(true);
-
-    rightLowCut.setBypassed<3>(true);
-
-    
-    switch (chainSettings.lowCutSlope) {
-        case Slope_12:
-        {
-            *rightLowCut.get<0>().coefficients = *cutCoefficients[0];
-            rightLowCut.setBypassed<0>(false);
-            break;
-        }
-        case Slope_24:
-        {
-            *rightLowCut.get<0>().coefficients = *cutCoefficients[0];
-            rightLowCut.setBypassed<0>(false);
-            *rightLowCut.get<1>().coefficients = *cutCoefficients[1];
-            rightLowCut.setBypassed<1>(false);
-            break;
-        }
-        case Slope_36:
-        {
-            *rightLowCut.get<0>().coefficients = *cutCoefficients[0];
-            rightLowCut.setBypassed<0>(false);
-            *rightLowCut.get<1>().coefficients = *cutCoefficients[1];
-            rightLowCut.setBypassed<1>(false);
-            *rightLowCut.get<2>().coefficients = *cutCoefficients[2];
-            rightLowCut.setBypassed<2>(false);
-            break;
-        }
-        case Slope_48:
-        {
-            *rightLowCut.get<0>().coefficients = *cutCoefficients[0];
-            rightLowCut.setBypassed<0>(false);
-            *rightLowCut.get<1>().coefficients = *cutCoefficients[1];
-            rightLowCut.setBypassed<1>(false);
-            *rightLowCut.get<2>().coefficients = *cutCoefficients[2];
-            rightLowCut.setBypassed<2>(false);
-            *rightLowCut.get<3>().coefficients = *cutCoefficients[3];
-            rightLowCut.setBypassed<3>(false);
-            break;
-        }
-    }
+    updateFilters();
     
 }
 
@@ -251,132 +144,32 @@ bool ProvaDSPAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 void ProvaDSPAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
-        auto totalNumInputChannels  = getTotalNumInputChannels();
-        auto totalNumOutputChannels = getTotalNumOutputChannels();
-        // In case we have more outputs than inputs, this code clears any output
-        // channels that didn't contain input data, (because these aren't
-        // guaranteed to be empty - they may contain garbage).
-        // This is here to avoid people getting screaming feedback
-        // when they first compile a plugin, but obviously you don't need to keep
-        // this code if your algorithm always overwrites all the output channels.
-         for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-             buffer.clear (i, 0, buffer.getNumSamples());
+    auto totalNumInputChannels  = getTotalNumInputChannels();
+    auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-         auto chainSettings = getChainSettings(apvts);
+    // In case we have more outputs than inputs, this code clears any output
+    // channels that didn't contain input data, (because these aren't
+    // guaranteed to be empty - they may contain garbage).
+    // This is here to avoid people getting screaming feedback
+    // when they first compile a plugin, but obviously you don't need to keep
+    // this code if your algorithm always overwrites all the output channels.
+    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+        buffer.clear (i, 0, buffer.getNumSamples());
 
-    updatePeakFilter(chainSettings);
-
-    auto cutCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.lowCutFreq,getSampleRate(), 2*(chainSettings.lowCutSlope+1));
+    updateFilters();
     
-    auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
+    juce::dsp::AudioBlock<float> block(buffer);
     
-    leftLowCut.setBypassed<0>(true);
+    auto leftBlock = block.getSingleChannelBlock(0);
+    auto rightBlock = block.getSingleChannelBlock(1);
     
-    leftLowCut.setBypassed<1>(true);
-
-    leftLowCut.setBypassed<2>(true);
-
-    leftLowCut.setBypassed<3>(true);
-
+    juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);
+    juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);
     
-    switch (chainSettings.lowCutSlope) {
-        case Slope_12:
-        {
-            *leftLowCut.get<0>().coefficients = *cutCoefficients[0];
-            leftLowCut.setBypassed<0>(false);
-            break;
-        }
-        case Slope_24:
-        {
-            *leftLowCut.get<0>().coefficients = *cutCoefficients[0];
-            leftLowCut.setBypassed<0>(false);
-            *leftLowCut.get<1>().coefficients = *cutCoefficients[1];
-            leftLowCut.setBypassed<1>(false);
-            break;
-        }
-        case Slope_36:
-        {
-            *leftLowCut.get<0>().coefficients = *cutCoefficients[0];
-            leftLowCut.setBypassed<0>(false);
-            *leftLowCut.get<1>().coefficients = *cutCoefficients[1];
-            leftLowCut.setBypassed<1>(false);
-            *leftLowCut.get<2>().coefficients = *cutCoefficients[2];
-            leftLowCut.setBypassed<2>(false);
-            break;
-        }
-        case Slope_48:
-        {
-            *leftLowCut.get<0>().coefficients = *cutCoefficients[0];
-            leftLowCut.setBypassed<0>(false);
-            *leftLowCut.get<1>().coefficients = *cutCoefficients[1];
-            leftLowCut.setBypassed<1>(false);
-            *leftLowCut.get<2>().coefficients = *cutCoefficients[2];
-            leftLowCut.setBypassed<2>(false);
-            *leftLowCut.get<3>().coefficients = *cutCoefficients[3];
-            leftLowCut.setBypassed<3>(false);
-            break;
-        }
-    }
+    leftChain.process(leftContext);
+    rightChain.process(rightContext);
     
-    auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
     
-    rightLowCut.setBypassed<0>(true);
-    
-    rightLowCut.setBypassed<1>(true);
-
-    rightLowCut.setBypassed<2>(true);
-
-    rightLowCut.setBypassed<3>(true);
-
-    
-    switch (chainSettings.lowCutSlope) {
-        case Slope_12:
-        {
-            *rightLowCut.get<0>().coefficients = *cutCoefficients[0];
-            rightLowCut.setBypassed<0>(false);
-            break;
-        }
-        case Slope_24:
-        {
-            *rightLowCut.get<0>().coefficients = *cutCoefficients[0];
-            rightLowCut.setBypassed<0>(false);
-            *rightLowCut.get<1>().coefficients = *cutCoefficients[1];
-            rightLowCut.setBypassed<1>(false);
-            break;
-        }
-        case Slope_36:
-        {
-            *rightLowCut.get<0>().coefficients = *cutCoefficients[0];
-            rightLowCut.setBypassed<0>(false);
-            *rightLowCut.get<1>().coefficients = *cutCoefficients[1];
-            rightLowCut.setBypassed<1>(false);
-            *rightLowCut.get<2>().coefficients = *cutCoefficients[2];
-            rightLowCut.setBypassed<2>(false);
-            break;
-        }
-        case Slope_48:
-        {
-            *rightLowCut.get<0>().coefficients = *cutCoefficients[0];
-            rightLowCut.setBypassed<0>(false);
-            *rightLowCut.get<1>().coefficients = *cutCoefficients[1];
-            rightLowCut.setBypassed<1>(false);
-            *rightLowCut.get<2>().coefficients = *cutCoefficients[2];
-            rightLowCut.setBypassed<2>(false);
-            *rightLowCut.get<3>().coefficients = *cutCoefficients[3];
-            rightLowCut.setBypassed<3>(false);
-            break;
-        }
-    }
-         juce::dsp::AudioBlock<float> block(buffer);
-
-         auto leftBlock = block.getSingleChannelBlock(0);
-        auto rightBlock = block.getSingleChannelBlock(1);
-        
-        juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);
-        juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);
-        
-        leftChain.process(leftContext);
-        rightChain.process(rightContext);
     
 }
 
@@ -388,8 +181,8 @@ bool ProvaDSPAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* ProvaDSPAudioProcessor::createEditor()
 {
+//    return new ProvaDSPAudioProcessorEditor (*this);
     return new juce::GenericAudioProcessorEditor(*this);
-
 }
 
 //==============================================================================
@@ -400,87 +193,119 @@ void ProvaDSPAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     // as intermediaries to make it easy to save and load complex data.
 }
 
-ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
- {
-     ChainSettings settings;
-
-     settings.lowCutFreq = apvts.getRawParameterValue("LowCut Freq")->load();
-     settings.highCutFreq = apvts.getRawParameterValue("HighCut Freq")->load();
-     settings.peakFreq = apvts.getRawParameterValue("Peak Freq")->load();
-     settings.peakGainInDecibels = apvts.getRawParameterValue("Peak Gain")->load();
-     settings.peakQuality = apvts.getRawParameterValue("Peak Quality")->load();
-     settings.lowCutSlope = static_cast<Slope>(apvts.getRawParameterValue("LowCut Slope")->load());
-     settings.highCutSlope = static_cast<Slope>(apvts.getRawParameterValue("HighCut Slope")->load());
-
-     return settings;
- }
-
-void ProvaDSPAudioProcessor::updatePeakFilter(const ChainSettings &chainSettings){
-    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
-                                                                                chainSettings.peakFreq,
-                                                                                chainSettings.peakQuality,
-                                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels));
-
-    
-    updateCoefficients(leftChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
-    updateCoefficients(rightChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
-
-    
-}
-
-void ProvaDSPAudioProcessor::updateCoefficients(Coefficients &old, const Coefficients &replacements){
-    *old = *replacements;
-}
-
-juce::AudioProcessorValueTreeState::ParameterLayout ProvaDSPAudioProcessor::createParameterLayout()
-{
-    
-    juce::AudioProcessorValueTreeState::ParameterLayout layout;
-        
-    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"LowCut Freq", 1},
-                                                               "LowCut Freq",
-                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
-                                                               20.f));
-
-    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"HighCut Freq", 1},
-                                                               "HighCut Freq",
-                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
-                                                               20000.f));
-
-    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Freq", 1},
-                                                               "Peak Freq",
-                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
-                                                               750.f));
-
-    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Gain", 1},
-                                                               "Peak Gain",
-                                                               juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
-                                                               0.0f));
-
-    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Quality", 1},
-                                                               "Peak Quality",
-                                                               juce::NormalisableRange<float>(0.1f,10.f, 0.05f,1.f),
-                                                               1.f));
-
-        juce::StringArray stringArray;
-
-        for(int i = 0; i < 4; ++i){
-            juce::String str;
-            str << (12 + i*12);
-            str << " db/Oct";
-            stringArray.add(str);
-        }
-
-    layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID {"LowCut Slope", 1}, "LowCut Slope", stringArray, 0));
-    layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID {"HighCut Slope", 1}, "HighCut Slope", stringArray, 0));
-
-    return layout;
-}
-
 void ProvaDSPAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
+}
+
+ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
+{
+    ChainSettings settings;
+    
+    settings.lowCutFreq = apvts.getRawParameterValue("LowCut Freq")->load();
+    settings.highCutFreq = apvts.getRawParameterValue("HighCut Freq")->load();
+    settings.peakFreq = apvts.getRawParameterValue("Peak Freq")->load();
+    settings.peakGainInDecibels = apvts.getRawParameterValue("Peak Gain")->load();
+    settings.peakQuality = apvts.getRawParameterValue("Peak Quality")->load();
+    settings.lowCutSlope = static_cast<Slope>(apvts.getRawParameterValue("LowCut Slope")->load());
+    settings.highCutSlope = static_cast<Slope>(apvts.getRawParameterValue("HighCut Slope")->load());
+    
+    return settings;
+}
+
+void ProvaDSPAudioProcessor::updatePeakFilter(const ChainSettings &chainSettings)
+{
+    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
+                                                                                chainSettings.peakFreq,
+                                                                                chainSettings.peakQuality,
+                                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels));
+    
+    updateCoefficients(leftChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+    updateCoefficients(rightChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+}
+
+void ProvaDSPAudioProcessor::updateCoefficients(Coefficients &old, const Coefficients &replacements)
+{
+    *old = *replacements;
+}
+
+void ProvaDSPAudioProcessor::updateLowCutFilters(const ChainSettings &chainSettings)
+{
+    auto cutCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.lowCutFreq,
+                                                                                                       getSampleRate(),
+                                                                                                       2 * (chainSettings.lowCutSlope + 1));
+    auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
+    auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
+    
+    updateCutFilter(rightLowCut, cutCoefficients, chainSettings.lowCutSlope);
+    updateCutFilter(leftLowCut, cutCoefficients, chainSettings.lowCutSlope);
+}
+
+void ProvaDSPAudioProcessor::updateHighCutFilters(const ChainSettings &chainSettings)
+{
+    auto highCutCoefficients = juce::dsp::FilterDesign<float>::designIIRLowpassHighOrderButterworthMethod(chainSettings.highCutFreq,
+                                                                                                          getSampleRate(),
+                                                                                                          2 * (chainSettings.highCutSlope + 1));
+    
+    auto& leftHighCut = leftChain.get<ChainPositions::HighCut>();
+    auto& rightHighCut = rightChain.get<ChainPositions::HighCut>();
+    
+    updateCutFilter(leftHighCut, highCutCoefficients, chainSettings.highCutSlope);
+    updateCutFilter(rightHighCut, highCutCoefficients, chainSettings.highCutSlope);
+}
+
+void ProvaDSPAudioProcessor::updateFilters()
+{
+    auto chainSettings = getChainSettings(apvts);
+    
+    updateLowCutFilters(chainSettings);
+    updatePeakFilter(chainSettings);
+    updateHighCutFilters(chainSettings);
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout ProvaDSPAudioProcessor::createParameterLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+    
+    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"LowCut Freq", 1},
+                                                                   "LowCut Freq",
+                                                                   juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                                   20.f));
+
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"HighCut Freq", 1},
+                                                                   "HighCut Freq",
+                                                                   juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                                   20000.f));
+
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Freq", 1},
+                                                                   "Peak Freq",
+                                                                   juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                                   750.f));
+
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Gain", 1},
+                                                                   "Peak Gain",
+                                                                   juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
+                                                                   0.0f));
+
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Quality", 1},
+                                                                   "Peak Quality",
+                                                                   juce::NormalisableRange<float>(0.1f,10.f, 0.05f,1.f),
+                                                                   1.f));
+    
+    juce::StringArray stringArray;
+    for( int i = 0; i < 4; ++i )
+    {
+        juce::String str;
+        str << (12 + i*12);
+        str << " db/Oct";
+        stringArray.add(str);
+    }
+    
+    layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID {"LowCut Slope", 1}, "LowCut Slope", stringArray, 0));
+    layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID {"HighCut Slope", 1}, "HighCut Slope", stringArray, 0));
+    
+    return layout;
 }
 
 //==============================================================================
