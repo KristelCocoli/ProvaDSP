@@ -95,6 +95,28 @@ void ProvaDSPAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
+ 
+    juce::dsp::ProcessSpec spec;
+
+    spec.maximumBlockSize = samplesPerBlock;
+
+    spec.numChannels = 1;
+
+    spec.sampleRate = sampleRate;
+
+    leftChain.prepare(spec);
+    rightChain.prepare(spec);
+    
+    
+    auto chainSettings = getChainSettings(apvts);
+
+    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate,
+                                                                                chainSettings.peakFreq,
+                                                                                chainSettings.peakQuality,
+                                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels));
+
+    *leftChain.get<ChainPositions::Peak>().coefficients = *peakCoefficients;
+    *rightChain.get<ChainPositions::Peak>().coefficients = *peakCoefficients;
 }
 
 void ProvaDSPAudioProcessor::releaseResources()
@@ -132,30 +154,38 @@ bool ProvaDSPAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 void ProvaDSPAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
-    auto totalNumInputChannels  = getTotalNumInputChannels();
-    auto totalNumOutputChannels = getTotalNumOutputChannels();
+        auto totalNumInputChannels  = getTotalNumInputChannels();
+        auto totalNumOutputChannels = getTotalNumOutputChannels();
+        // In case we have more outputs than inputs, this code clears any output
+        // channels that didn't contain input data, (because these aren't
+        // guaranteed to be empty - they may contain garbage).
+        // This is here to avoid people getting screaming feedback
+        // when they first compile a plugin, but obviously you don't need to keep
+        // this code if your algorithm always overwrites all the output channels.
+         for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+             buffer.clear (i, 0, buffer.getNumSamples());
 
-    // In case we have more outputs than inputs, this code clears any output
-    // channels that didn't contain input data, (because these aren't
-    // guaranteed to be empty - they may contain garbage).
-    // This is here to avoid people getting screaming feedback
-    // when they first compile a plugin, but obviously you don't need to keep
-    // this code if your algorithm always overwrites all the output channels.
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear (i, 0, buffer.getNumSamples());
+         auto chainSettings = getChainSettings(apvts);
 
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        auto* channelData = buffer.getWritePointer (channel);
+         auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
+                                                                                     chainSettings.peakFreq,
+                                                                                     chainSettings.peakQuality,
+                                                                                     juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels));
 
-        // ..do something to the data...
-    }
+         *leftChain.get<ChainPositions::Peak>().coefficients = *peakCoefficients;
+         *rightChain.get<ChainPositions::Peak>().coefficients = *peakCoefficients;
+
+         juce::dsp::AudioBlock<float> block(buffer);
+
+         auto leftBlock = block.getSingleChannelBlock(0);
+        auto rightBlock = block.getSingleChannelBlock(1);
+        
+        juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);
+        juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);
+        
+        leftChain.process(leftContext);
+        rightChain.process(rightContext);
+    
 }
 
 //==============================================================================
@@ -178,6 +208,21 @@ void ProvaDSPAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     // as intermediaries to make it easy to save and load complex data.
 }
 
+ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
+ {
+     ChainSettings settings;
+
+     settings.lowCutFreq = apvts.getRawParameterValue("LowCut Freq")->load();
+     settings.highCutFreq = apvts.getRawParameterValue("HighCut Freq")->load();
+     settings.peakFreq = apvts.getRawParameterValue("Peak Freq")->load();
+     settings.peakGainInDecibels = apvts.getRawParameterValue("Peak Gain")->load();
+     settings.peakQuality = apvts.getRawParameterValue("Peak Quality")->load();
+     settings.lowCutSlope = apvts.getRawParameterValue("LowCut Slope")->load();
+     settings.highCutSlope = apvts.getRawParameterValue("HighCut Slope")->load();
+
+     return settings;
+ }
+
 juce::AudioProcessorValueTreeState::ParameterLayout ProvaDSPAudioProcessor::createParameterLayout()
 {
     
@@ -185,17 +230,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout ProvaDSPAudioProcessor::crea
         
     layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"LowCut Freq", 1},
                                                                "LowCut Freq",
-                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
                                                                20.f));
 
     layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"HighCut Freq", 1},
                                                                "HighCut Freq",
-                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
                                                                20000.f));
 
     layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Freq", 1},
                                                                "Peak Freq",
-                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
                                                                750.f));
 
     layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Gain", 1},
