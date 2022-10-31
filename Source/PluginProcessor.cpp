@@ -107,6 +107,14 @@ void ProvaDSPAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     
     updateFilters();
     
+    leftChannelFifo.prepare(samplesPerBlock);
+    rightChannelFifo.prepare(samplesPerBlock);
+    
+    osc.initialise([](float x) { return std::sin(x); });
+    
+    spec.numChannels = getTotalNumOutputChannels();
+    osc.prepare(spec);
+    osc.setFrequency(440);
 }
 
 void ProvaDSPAudioProcessor::releaseResources()
@@ -126,8 +134,8 @@ bool ProvaDSPAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
     // In this template code we only support mono or stereo.
     // Some plugin hosts, such as certain GarageBand versions, will only
     // load plugins that support stereo bus layouts.
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+    if (//layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo()
+        layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
 
     // This checks if the input layout matches the output layout
@@ -160,6 +168,16 @@ void ProvaDSPAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     
     juce::dsp::AudioBlock<float> block(buffer);
     
+//    buffer.clear();
+//
+//    for( int i = 0; i < buffer.getNumSamples(); ++i )
+//    {
+//        buffer.setSample(0, i, osc.processSample(0));
+//    }
+//
+//    juce::dsp::ProcessContextReplacing<float> stereoContext(block);
+//    osc.process(stereoContext);
+    
     auto leftBlock = block.getSingleChannelBlock(0);
     auto rightBlock = block.getSingleChannelBlock(1);
     
@@ -169,7 +187,8 @@ void ProvaDSPAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     leftChain.process(leftContext);
     rightChain.process(rightContext);
     
-    
+    leftChannelFifo.update(buffer);
+    rightChannelFifo.update(buffer);
     
 }
 
@@ -181,8 +200,8 @@ bool ProvaDSPAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* ProvaDSPAudioProcessor::createEditor()
 {
-//    return new ProvaDSPAudioProcessorEditor (*this);
-    return new ProvaDSPAudioProcessorEditor(*this);
+    return new ProvaDSPAudioProcessorEditor (*this);
+//    return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
@@ -193,8 +212,7 @@ void ProvaDSPAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     // as intermediaries to make it easy to save and load complex data.
     
     juce::MemoryOutputStream mos(destData, true);
-        apvts.state.writeToStream(mos);
-    
+    apvts.state.writeToStream(mos);
 }
 
 void ProvaDSPAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -202,11 +220,11 @@ void ProvaDSPAudioProcessor::setStateInformation (const void* data, int sizeInBy
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
     auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
-       if( tree.isValid() )
-       {
-           apvts.replaceState(tree);
-           updateFilters();
-       }
+    if( tree.isValid() )
+    {
+        apvts.replaceState(tree);
+        updateFilters();
+    }
 }
 
 ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
@@ -221,6 +239,10 @@ ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
     settings.lowCutSlope = static_cast<Slope>(apvts.getRawParameterValue("LowCut Slope")->load());
     settings.highCutSlope = static_cast<Slope>(apvts.getRawParameterValue("HighCut Slope")->load());
     
+    settings.lowCutBypassed = apvts.getRawParameterValue("LowCut Bypassed")->load() > 0.5f;
+    settings.peakBypassed = apvts.getRawParameterValue("Peak Bypassed")->load() > 0.5f;
+    settings.highCutBypassed = apvts.getRawParameterValue("HighCut Bypassed")->load() > 0.5f;
+    
     return settings;
 }
 
@@ -232,10 +254,12 @@ Coefficients makePeakFilter(const ChainSettings& chainSettings, double sampleRat
                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels));
 }
 
-
 void ProvaDSPAudioProcessor::updatePeakFilter(const ChainSettings &chainSettings)
 {
     auto peakCoefficients = makePeakFilter(chainSettings, getSampleRate());
+    
+    leftChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
+    rightChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
     
     updateCoefficients(leftChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
     updateCoefficients(rightChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
@@ -252,6 +276,9 @@ void ProvaDSPAudioProcessor::updateLowCutFilters(const ChainSettings &chainSetti
     auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
     auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
     
+    leftChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    rightChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    
     updateCutFilter(rightLowCut, cutCoefficients, chainSettings.lowCutSlope);
     updateCutFilter(leftLowCut, cutCoefficients, chainSettings.lowCutSlope);
 }
@@ -259,10 +286,12 @@ void ProvaDSPAudioProcessor::updateLowCutFilters(const ChainSettings &chainSetti
 void ProvaDSPAudioProcessor::updateHighCutFilters(const ChainSettings &chainSettings)
 {
     auto highCutCoefficients = makeHighCutFilter(chainSettings, getSampleRate());
-
     
     auto& leftHighCut = leftChain.get<ChainPositions::HighCut>();
     auto& rightHighCut = rightChain.get<ChainPositions::HighCut>();
+    
+    leftChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+    rightChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
     
     updateCutFilter(leftHighCut, highCutCoefficients, chainSettings.highCutSlope);
     updateCutFilter(rightHighCut, highCutCoefficients, chainSettings.highCutSlope);
@@ -281,49 +310,56 @@ juce::AudioProcessorValueTreeState::ParameterLayout ProvaDSPAudioProcessor::crea
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     
+    
     layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"LowCut Freq", 1},
-                                                                   "LowCut Freq",
-                                                                   juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
-                                                                   20.f));
-
-        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"HighCut Freq", 1},
-                                                                   "HighCut Freq",
-                                                                   juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
-                                                                   20000.f));
-
-        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Freq", 1},
-                                                                   "Peak Freq",
-                                                                   juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
-                                                                   750.f));
-
-        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Gain", 1},
-                                                                   "Peak Gain",
-                                                                   juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
-                                                                   0.0f));
-
-        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Quality", 1},
-                                                                   "Peak Quality",
-                                                                   juce::NormalisableRange<float>(0.1f,10.f, 0.05f,1.f),
-                                                                   1.f));
+                                                               "LowCut Freq",
+                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
+                                                               20.f));
+        
+    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"HighCut Freq", 1},
+                                                               "HighCut Freq",
+                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
+                                                               20000.f));
+        
+    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Freq", 1},
+                                                               "Peak Freq",
+                                                               juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
+                                                               750.f));
+        
+    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Gain", 1},
+                                                               "Peak Gain",
+                                                               juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
+                                                               0.0f));
+        
+    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {"Peak Quality", 1},
+                                                               "Peak Quality",
+                                                               juce::NormalisableRange<float>(0.1f, 10.f, 0.05f, 1.f),
+                                                               1.f));
+        
     
     juce::StringArray stringArray;
-    for( int i = 0; i < 4; ++i )
-    {
-        juce::String str;
-        str << (12 + i*12);
-        str << " db/Oct";
-        stringArray.add(str);
-    }
-    
+        for( int i = 0; i < 4; ++i )
+        {
+            juce::String str;
+            str << (12 + i*12);
+            str << " db/Oct";
+            stringArray.add(str);
+        }
+        
     layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID {"LowCut Slope", 1}, "LowCut Slope", stringArray, 0));
     layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID {"HighCut Slope", 1}, "HighCut Slope", stringArray, 0));
-    
-    return layout;
-}
+        
+    layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID {"LowCut Bypassed", 1}, "LowCut Bypassed", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID {"Peak Bypassed", 1}, "Peak Bypassed", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID {"HighCut Bypassed", 1}, "HighCut Bypassed", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID {"Analyzer Enabled", 1}, "Analyzer Enabled", true));
+        
+        return layout;
+    }
 
-//==============================================================================
-// This creates new instances of the plugin..
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new ProvaDSPAudioProcessor();
-}
+    //==============================================================================
+    // This creates new instances of the plugin..
+    juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+    {
+        return new ProvaDSPAudioProcessor();
+    }
