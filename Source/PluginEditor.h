@@ -69,7 +69,7 @@ private:
     std::unique_ptr<juce::dsp::FFT> Fft;
     std::unique_ptr<juce::dsp::WindowingFunction<float>> Boundary;
     
-    Fifo<BlockType> FftBuffer;
+    Buffer<BlockType> FftBuffer;
 };
 
 template<typename PathType>
@@ -119,7 +119,7 @@ struct FFTSignalComponent
     bool getPath(PathType& path) { return Buffer.pull(path); }
     
 private:
-    Fifo<PathType> Buffer;
+    Buffer<PathType> Buffer;
 };
 
 struct CustomLayout : juce::LookAndFeel_V4
@@ -167,7 +167,7 @@ private:
 
 struct SignlarTracer
 {
-    SignlarTracer(SingleChannelSampleFifo<ProvaDSPAudioProcessor::BlockType>& SingleChannelBuffer) :
+    SignlarTracer(SingleChannelBuffer<ProvaDSPAudioProcessor::BlockType>& SingleChannelBuffer) :
     leftChannelFifo(&SingleChannelBuffer)
     {
         LeftChannelFFTAnalyzer.Rearrange(FFTOrder::order2048);
@@ -177,7 +177,7 @@ struct SignlarTracer
     juce::Path getPath() { return LeftChannelFFTSignal; }
     // Private members of the struct
 private:
-    SingleChannelSampleFifo<ProvaDSPAudioProcessor::BlockType>* leftChannelFifo;
+    SingleChannelBuffer<ProvaDSPAudioProcessor::BlockType>* leftChannelFifo;
     
     juce::AudioBuffer<float> AudioBuffer;
     SpectrumAnalyzer<std::vector<float>> LeftChannelFFTAnalyzer;
