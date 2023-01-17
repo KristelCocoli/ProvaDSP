@@ -4,121 +4,10 @@
   ==============================================================================
 */
 
-#include "PluginProcessor.h"
+//#include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-void LookAndFeel::drawRotarySlider(juce::Graphics & g,
-                                   int x,
-                                   int y,
-                                   int width,
-                                   int height,
-                                   float sliderPosProportional,
-                                   float rotaryStartAngle,
-                                   float rotaryEndAngle,
-                                   juce::Slider & slider)
-{
-    using namespace juce;
-    
-    auto bounds = Rectangle<float>(x, y, width, height);
-    
-    auto enabled = slider.isEnabled();
-    
-    g.setColour(enabled ? Colour(97u, 18u, 167u) : Colours::darkgrey );
-    g.fillEllipse(bounds);
-    
-    g.setColour(enabled ? Colour(255u, 154u, 1u) : Colours::grey);
-    g.drawEllipse(bounds, 1.f);
-    
-    if( auto* rswl = dynamic_cast<RotarySliderWithLabels*>(&slider))
-    {
-        auto center = bounds.getCentre();
-        Path p;
-        
-        Rectangle<float> r;
-        r.setLeft(center.getX() - 2);
-        r.setRight(center.getX() + 2);
-        r.setTop(bounds.getY());
-        r.setBottom(center.getY() - rswl->getTextHeight() * 1.5);
-        
-        p.addRoundedRectangle(r, 2.f);
-        
-        jassert(rotaryStartAngle < rotaryEndAngle);
-        
-        auto sliderAngRad = jmap(sliderPosProportional, 0.f, 1.f, rotaryStartAngle, rotaryEndAngle);
-        
-        p.applyTransform(AffineTransform().rotated(sliderAngRad, center.getX(), center.getY()));
-        
-        g.fillPath(p);
-        
-        g.setFont(rswl->getTextHeight());
-        auto text = rswl->getDisplayString();
-        auto strWidth = g.getCurrentFont().getStringWidth(text);
-        
-        r.setSize(strWidth + 4, rswl->getTextHeight() + 2);
-        r.setCentre(bounds.getCentre());
-        
-        g.setColour(enabled ? Colours::black : Colours::darkgrey);
-        g.fillRect(r);
-        
-        g.setColour(enabled ? Colours::white : Colours::lightgrey);
-        g.drawFittedText(text, r.toNearestInt(), juce::Justification::centred, 1);
-    }
-}
-
-void LookAndFeel::drawToggleButton(juce::Graphics &g,
-                                   juce::ToggleButton &toggleButton,
-                                   bool shouldDrawButtonAsHighlighted,
-                                   bool shouldDrawButtonAsDown)
-{
-    using namespace juce;
-    
-    if( auto* pb = dynamic_cast<PowerButton*>(&toggleButton) )
-    {
-        Path powerButton;
-        
-        auto bounds = toggleButton.getLocalBounds();
-        
-        auto size = jmin(bounds.getWidth(), bounds.getHeight()) - 6;
-        auto r = bounds.withSizeKeepingCentre(size, size).toFloat();
-        
-        float ang = 30.f; //30.f;
-        
-        size -= 6;
-        
-        powerButton.addCentredArc(r.getCentreX(),
-                                  r.getCentreY(),
-                                  size * 0.5,
-                                  size * 0.5,
-                                  0.f,
-                                  degreesToRadians(ang),
-                                  degreesToRadians(360.f - ang),
-                                  true);
-        
-        powerButton.startNewSubPath(r.getCentreX(), r.getY());
-        powerButton.lineTo(r.getCentre());
-        
-        PathStrokeType pst(2.f, PathStrokeType::JointStyle::curved);
-        
-        auto color = toggleButton.getToggleState() ? Colours::dimgrey : Colour(0u, 172u, 1u);
-        
-        g.setColour(color);
-        g.strokePath(powerButton, pst);
-        g.drawEllipse(r, 2);
-    }
-    else if( auto* analyzerButton = dynamic_cast<AnalyzerButton*>(&toggleButton) )
-    {
-        auto color = ! toggleButton.getToggleState() ? Colours::dimgrey : Colour(0u, 172u, 1u);
-        
-        g.setColour(color);
-        
-        auto bounds = toggleButton.getLocalBounds();
-        g.drawRect(bounds);
-        
-        g.strokePath(analyzerButton->randomPath, PathStrokeType(1.f));
-    }
-}
-//==============================================================================
-void RotarySliderWithLabels::paint(juce::Graphics &g)
+void DSPSlider::paint(juce::Graphics &g)
 {
     using namespace juce;
     
@@ -134,7 +23,7 @@ void RotarySliderWithLabels::paint(juce::Graphics &g)
 //    g.setColour(Colours::yellow);
 //    g.drawRect(sliderBounds);
     
-    getLookAndFeel().drawRotarySlider(g,
+    getLookAndFeel().ShowSliders(g,
                                       sliderBounds.getX(),
                                       sliderBounds.getY(),
                                       sliderBounds.getWidth(),
@@ -147,13 +36,13 @@ void RotarySliderWithLabels::paint(juce::Graphics &g)
     auto center = sliderBounds.toFloat().getCentre();
     auto radius = sliderBounds.getWidth() * 0.5f;
     
-    g.setColour(Colour(0u, 172u, 1u));
+    g.setColour(Colours::red);
     g.setFont(getTextHeight());
     
-    auto numChoices = labels.size();
+    auto numChoices = listOfLabels.size();
     for( int i = 0; i < numChoices; ++i )
     {
-        auto pos = labels[i].pos;
+        auto pos = listOfLabels[i].pos;
         jassert(0.f <= pos);
         jassert(pos <= 1.f);
         
@@ -162,7 +51,7 @@ void RotarySliderWithLabels::paint(juce::Graphics &g)
         auto c = center.getPointOnCircumference(radius + getTextHeight() * 0.5f + 1, ang);
         
         Rectangle<float> r;
-        auto str = labels[i].label;
+        auto str = listOfLabels[i].label;
         r.setSize(g.getCurrentFont().getStringWidth(str), getTextHeight());
         r.setCentre(c);
         r.setY(r.getY() + getTextHeight());
@@ -172,7 +61,7 @@ void RotarySliderWithLabels::paint(juce::Graphics &g)
     
 }
 
-juce::Rectangle<int> RotarySliderWithLabels::getSliderBounds() const
+juce::Rectangle<int> DSPSlider::getSliderBounds() const
 {
     auto bounds = getLocalBounds();
     
@@ -188,15 +77,15 @@ juce::Rectangle<int> RotarySliderWithLabels::getSliderBounds() const
     
 }
 
-juce::String RotarySliderWithLabels::getDisplayString() const
+juce::String DSPSlider::getDisplayString() const
 {
-    if( auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(param) )
+    if( auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(parameters) )
         return choiceParam->getCurrentChoiceName();
     
     juce::String str;
     bool addK = false;
     
-    if( auto* floatParam = dynamic_cast<juce::AudioParameterFloat*>(param) )
+    if( auto* floatParam = dynamic_cast<juce::AudioParameterFloat*>(parameters) )
     {
         float val = getValue();
         
@@ -213,55 +102,56 @@ juce::String RotarySliderWithLabels::getDisplayString() const
         jassertfalse; //this shouldn't happen!
     }
     
-    if( suffix.isNotEmpty() )
+    if( unitOfMeasure.isNotEmpty() )
     {
         str << " ";
         if( addK )
             str << "k";
         
-        str << suffix;
+        str << unitOfMeasure;
     }
     
     return str;
 }
-//==============================================================================
+
+
 ResponseCurveComponent::ResponseCurveComponent(ProvaDSPAudioProcessor& p) :
-audioProcessor(p),
-leftPathProducer(audioProcessor.leftChannelFifo),
-rightPathProducer(audioProcessor.rightChannelFifo)
+DSPProcessor(p),
+LeftSignalChannel(DSPProcessor.leftChannelFifo),
+RightSignalChannel(DSPProcessor.rightChannelFifo)
 {
-    const auto& params = audioProcessor.getParameters();
+    const auto& params = DSPProcessor.getParameters();
     for( auto param : params )
     {
         param->addListener(this);
     }
 
-    updateChain();
+    UpdateBuffer();
     
     startTimerHz(60);
 }
 
 ResponseCurveComponent::~ResponseCurveComponent()
 {
-    const auto& params = audioProcessor.getParameters();
+    const auto& params = DSPProcessor.getParameters();
     for( auto param : params )
     {
         param->removeListener(this);
     }
 }
 
-void ResponseCurveComponent::updateResponseCurve()
+void ResponseCurveComponent::TraceTransferFunctionFrequencyCurve()
 {
     using namespace juce;
-    auto responseArea = getAnalysisArea();
+    auto responseArea = GetAnalyzerAres();
     
     auto w = responseArea.getWidth();
     
-    auto& lowcut = monoChain.get<ChainPositions::LowCut>();
-    auto& peak = monoChain.get<ChainPositions::Peak>();
-    auto& highcut = monoChain.get<ChainPositions::HighCut>();
+    auto& lowcut = MonoChannelChain.get<ChainPositions::LowCut>();
+    auto& peak = MonoChannelChain.get<ChainPositions::Peak>();
+    auto& highcut = MonoChannelChain.get<ChainPositions::HighCut>();
     
-    auto sampleRate = audioProcessor.getSampleRate();
+    auto sampleRate = DSPProcessor.getSampleRate();
     
     std::vector<double> mags;
     
@@ -272,10 +162,10 @@ void ResponseCurveComponent::updateResponseCurve()
         double mag = 1.f;
         auto freq = mapToLog10(double(i) / double(w), 20.0, 20000.0);
         
-        if(! monoChain.isBypassed<ChainPositions::Peak>() )
+        if(! MonoChannelChain.isBypassed<ChainPositions::Peak>() )
             mag *= peak.coefficients->getMagnitudeForFrequency(freq, sampleRate);
         
-        if( !monoChain.isBypassed<ChainPositions::LowCut>() )
+        if( !MonoChannelChain.isBypassed<ChainPositions::LowCut>() )
         {
             if( !lowcut.isBypassed<0>() )
                 mag *= lowcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
@@ -287,7 +177,7 @@ void ResponseCurveComponent::updateResponseCurve()
                 mag *= lowcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
         }
         
-        if( !monoChain.isBypassed<ChainPositions::HighCut>() )
+        if( !MonoChannelChain.isBypassed<ChainPositions::HighCut>() )
         {
             if( !highcut.isBypassed<0>() )
                 mag *= highcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
@@ -302,7 +192,7 @@ void ResponseCurveComponent::updateResponseCurve()
         mags[i] = Decibels::gainToDecibels(mag);
     }
     
-    responseCurve.clear();
+    TransferFunctionCurve.clear();
     
     const double outputMin = responseArea.getBottom();
     const double outputMax = responseArea.getY();
@@ -311,60 +201,59 @@ void ResponseCurveComponent::updateResponseCurve()
         return jmap(input, -24.0, 24.0, outputMin, outputMax);
     };
     
-    responseCurve.startNewSubPath(responseArea.getX(), map(mags.front()));
+    TransferFunctionCurve.startNewSubPath(responseArea.getX(), map(mags.front()));
     
     for( size_t i = 1; i < mags.size(); ++i )
-    {
-        responseCurve.lineTo(responseArea.getX() + i, map(mags[i]));
-    }
+        TransferFunctionCurve.lineTo(responseArea.getX() + i, map(mags[i]));
 }
 
 void ResponseCurveComponent::paint (juce::Graphics& g)
 {
     using namespace juce;
     // (Our component is opaque, so we must completely fill the background with a solid colour)
-    g.fillAll (Colours::black);
+    g.fillAll (Colours::whitesmoke);
 
-    drawBackgroundGrid(g);
+    ShowPlotGrid(g);
     
-    auto responseArea = getAnalysisArea();
+    auto responseArea = GetAnalyzerAres();
     
-    if( shouldShowFFTAnalysis )
+    if( EnableFFT )
     {
-        auto leftChannelFFTPath = leftPathProducer.getPath();
+        auto leftChannelFFTPath = LeftSignalChannel.getPath();
         leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
         
-        g.setColour(Colour(97u, 18u, 167u)); //purple-
+        g.setColour(Colours::darkblue);
         g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
         
-        auto rightChannelFFTPath = rightPathProducer.getPath();
+        auto rightChannelFFTPath = RightSignalChannel.getPath();
         rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
         
-        g.setColour(Colour(215u, 201u, 134u));
+        g.setColour(Colours::cyan);
         g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
     }
     
-    g.setColour(Colours::white);
-    g.strokePath(responseCurve, PathStrokeType(2.f));
+    // Colour of transfer function
+    g.setColour(Colours::red);
+    g.strokePath(TransferFunctionCurve, PathStrokeType(2.f));
     
     Path border;
     
     border.setUsingNonZeroWinding(false);
     
-    border.addRoundedRectangle(getRenderArea(), 4);
+    border.addRoundedRectangle(GetArea(), 4);
     border.addRectangle(getLocalBounds());
     
-    g.setColour(Colours::black);
+    g.setColour(Colours::whitesmoke);
     
     g.fillPath(border);
     
-    drawTextLabels(g);
+    ShowPlotLabels(g);
     
     g.setColour(Colours::orange);
-    g.drawRoundedRectangle(getRenderArea().toFloat(), 4.f, 1.f);
+    g.drawRoundedRectangle(GetArea().toFloat(), 4.f, 1.f);
 }
 
-std::vector<float> ResponseCurveComponent::getFrequencies()
+std::vector<float> ResponseCurveComponent::GetAllFrequncies()
 {
     return std::vector<float>
     {
@@ -375,7 +264,7 @@ std::vector<float> ResponseCurveComponent::getFrequencies()
     };
 }
 
-std::vector<float> ResponseCurveComponent::getGains()
+std::vector<float> ResponseCurveComponent::GetAllGains()
 {
     return std::vector<float>
     {
@@ -383,7 +272,7 @@ std::vector<float> ResponseCurveComponent::getGains()
     };
 }
 
-std::vector<float> ResponseCurveComponent::getXs(const std::vector<float> &freqs, float left, float width)
+std::vector<float> ResponseCurveComponent::GetXCoordinates(const std::vector<float> &freqs, float left, float width)
 {
     std::vector<float> xs;
     for( auto f : freqs )
@@ -395,19 +284,19 @@ std::vector<float> ResponseCurveComponent::getXs(const std::vector<float> &freqs
     return xs;
 }
 
-void ResponseCurveComponent::drawBackgroundGrid(juce::Graphics &g)
+void ResponseCurveComponent::ShowPlotGrid(juce::Graphics &g)
 {
     using namespace juce;
-    auto freqs = getFrequencies();
+    auto freqs = GetAllFrequncies();
     
-    auto renderArea = getAnalysisArea();
+    auto renderArea = GetAnalyzerAres();
     auto left = renderArea.getX();
     auto right = renderArea.getRight();
     auto top = renderArea.getY();
     auto bottom = renderArea.getBottom();
     auto width = renderArea.getWidth();
     
-    auto xs = getXs(freqs, left, width);
+    auto xs = GetXCoordinates(freqs, left, width);
     
     g.setColour(Colours::dimgrey);
     for( auto x : xs )
@@ -415,7 +304,7 @@ void ResponseCurveComponent::drawBackgroundGrid(juce::Graphics &g)
         g.drawVerticalLine(x, top, bottom);
     }
     
-    auto gain = getGains();
+    auto gain = GetAllGains();
     
     for( auto gDb : gain )
     {
@@ -426,22 +315,22 @@ void ResponseCurveComponent::drawBackgroundGrid(juce::Graphics &g)
     }
 }
 
-void ResponseCurveComponent::drawTextLabels(juce::Graphics &g)
+void ResponseCurveComponent::ShowPlotLabels(juce::Graphics &g)
 {
     using namespace juce;
     g.setColour(Colours::lightgrey);
     const int fontHeight = 10;
     g.setFont(fontHeight);
     
-    auto renderArea = getAnalysisArea();
+    auto renderArea = GetAnalyzerAres();
     auto left = renderArea.getX();
     
     auto top = renderArea.getY();
     auto bottom = renderArea.getBottom();
     auto width = renderArea.getWidth();
     
-    auto freqs = getFrequencies();
-    auto xs = getXs(freqs, left, width);
+    auto freqs = GetAllFrequncies();
+    auto xs = GetXCoordinates(freqs, left, width);
     
     for( int i = 0; i < freqs.size(); ++i )
     {
@@ -472,7 +361,7 @@ void ResponseCurveComponent::drawTextLabels(juce::Graphics &g)
         g.drawFittedText(str, r, juce::Justification::centred, 1);
     }
     
-    auto gain = getGains();
+    auto gain = GetAllGains();
 
     for( auto gDb : gain )
     {
@@ -509,16 +398,16 @@ void ResponseCurveComponent::resized()
 {
     using namespace juce;
     
-    responseCurve.preallocateSpace(getWidth() * 3);
-    updateResponseCurve();
+    TransferFunctionCurve.preallocateSpace(getWidth() * 3);
+    TraceTransferFunctionFrequencyCurve();
 }
 
 void ResponseCurveComponent::parameterValueChanged(int parameterIndex, float newValue)
 {
-    parametersChanged.set(true);
+    RealoadParametersEvent.set(true);
 }
 
-void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
+void SignlarTracer::process(juce::Rectangle<float> fftBounds, double sampleRate)
 {
     juce::AudioBuffer<float> tempIncomingBuffer;
     while( leftChannelFifo->getNumCompleteBuffersAvailable() > 0 )
@@ -527,80 +416,80 @@ void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
         {
             auto size = tempIncomingBuffer.getNumSamples();
 
-            juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0, 0),
-                                              monoBuffer.getReadPointer(0, size),
-                                              monoBuffer.getNumSamples() - size);
+            juce::FloatVectorOperations::copy(AudioBuffer.getWritePointer(0, 0),
+                                              AudioBuffer.getReadPointer(0, size),
+                                              AudioBuffer.getNumSamples() - size);
 
-            juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0, monoBuffer.getNumSamples() - size),
+            juce::FloatVectorOperations::copy(AudioBuffer.getWritePointer(0, AudioBuffer.getNumSamples() - size),
                                               tempIncomingBuffer.getReadPointer(0, 0),
                                               size);
             
-            leftChannelFFTDataGenerator.produceFFTDataForRendering(monoBuffer, -48.f);
+            LeftChannelFFTAnalyzer.ApplyFftAnalysis(AudioBuffer, -48.f);
         }
     }
     
-    const auto fftSize = leftChannelFFTDataGenerator.getFFTSize();
+    const auto fftSize = LeftChannelFFTAnalyzer.GetSpectrumSize();
     const auto binWidth = sampleRate / double(fftSize);
 
-    while( leftChannelFFTDataGenerator.getNumAvailableFFTDataBlocks() > 0 )
+    while( LeftChannelFFTAnalyzer.GetNumberOfDataBlocks() > 0 )
     {
         std::vector<float> fftData;
-        if( leftChannelFFTDataGenerator.getFFTData( fftData) )
+        if( LeftChannelFFTAnalyzer.GetData( fftData) )
         {
-            pathProducer.generatePath(fftData, fftBounds, fftSize, binWidth, -48.f);
+            signalTracer.GenerateSignal(fftData, fftBounds, fftSize, binWidth, -48.f);
         }
     }
     
-    while( pathProducer.getNumPathsAvailable() > 0 )
+    while( signalTracer.getNumPathsAvailable() > 0 )
     {
-        pathProducer.getPath( leftChannelFFTPath );
+        signalTracer.getPath( LeftChannelFFTSignal );
     }
 }
 
 void ResponseCurveComponent::timerCallback()
 {
-    if( shouldShowFFTAnalysis )
+    if( EnableFFT )
     {
-        auto fftBounds = getAnalysisArea().toFloat();
-        auto sampleRate = audioProcessor.getSampleRate();
+        auto fftBounds = GetAnalyzerAres().toFloat();
+        auto sampleRate = DSPProcessor.getSampleRate();
         
-        leftPathProducer.process(fftBounds, sampleRate);
-        rightPathProducer.process(fftBounds, sampleRate);
+        LeftSignalChannel.process(fftBounds, sampleRate);
+        RightSignalChannel.process(fftBounds, sampleRate);
     }
 
-    if( parametersChanged.compareAndSetBool(false, true) )
+    if( RealoadParametersEvent.compareAndSetBool(false, true) )
     {
-        updateChain();
-        updateResponseCurve();
+        UpdateBuffer();
+        TraceTransferFunctionFrequencyCurve();
     }
     
     repaint();
 }
 
-void ResponseCurveComponent::updateChain()
+void ResponseCurveComponent::UpdateBuffer()
 {
-    auto chainSettings = getChainSettings(audioProcessor.apvts);
+    auto chainSettings = getChainSettings(DSPProcessor.apvts);
     
-    monoChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
-    monoChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
-    monoChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+    MonoChannelChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    MonoChannelChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
+    MonoChannelChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
     
-    auto peakCoefficients = makePeakFilter(chainSettings, audioProcessor.getSampleRate());
-    updateCoefficients(monoChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+    auto peakCoefficients = makePeakFilter(chainSettings, DSPProcessor.getSampleRate());
+    updateCoefficients(MonoChannelChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
     
-    auto lowCutCoefficients = makeLowCutFilter(chainSettings, audioProcessor.getSampleRate());
-    auto highCutCoefficients = makeHighCutFilter(chainSettings, audioProcessor.getSampleRate());
+    auto lowCutCoefficients = makeLowCutFilter(chainSettings, DSPProcessor.getSampleRate());
+    auto highCutCoefficients = makeHighCutFilter(chainSettings, DSPProcessor.getSampleRate());
     
-    updateCutFilter(monoChain.get<ChainPositions::LowCut>(),
+    updateCutFilter(MonoChannelChain.get<ChainPositions::LowCut>(),
                     lowCutCoefficients,
                     chainSettings.lowCutSlope);
     
-    updateCutFilter(monoChain.get<ChainPositions::HighCut>(),
+    updateCutFilter(MonoChannelChain.get<ChainPositions::HighCut>(),
                     highCutCoefficients,
                     chainSettings.highCutSlope);
 }
 
-juce::Rectangle<int> ResponseCurveComponent::getRenderArea()
+juce::Rectangle<int> ResponseCurveComponent::GetArea()
 {
     auto bounds = getLocalBounds();
     
@@ -613,9 +502,9 @@ juce::Rectangle<int> ResponseCurveComponent::getRenderArea()
 }
 
 
-juce::Rectangle<int> ResponseCurveComponent::getAnalysisArea()
+juce::Rectangle<int> ResponseCurveComponent::GetAnalyzerAres()
 {
-    auto bounds = getRenderArea();
+    auto bounds = GetArea();
     bounds.removeFromTop(4);
     bounds.removeFromBottom(4);
     return bounds;
@@ -623,94 +512,94 @@ juce::Rectangle<int> ResponseCurveComponent::getAnalysisArea()
 //==============================================================================
 ProvaDSPAudioProcessorEditor::ProvaDSPAudioProcessorEditor (ProvaDSPAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p),
-peakFreqSlider(*audioProcessor.apvts.getParameter("Peak Freq"), "Hz"),
-peakGainSlider(*audioProcessor.apvts.getParameter("Peak Gain"), "dB"),
-peakQualitySlider(*audioProcessor.apvts.getParameter("Peak Quality"), ""),
-lowCutFreqSlider(*audioProcessor.apvts.getParameter("LowCut Freq"), "Hz"),
-highCutFreqSlider(*audioProcessor.apvts.getParameter("HighCut Freq"), "Hz"),
-lowCutSlopeSlider(*audioProcessor.apvts.getParameter("LowCut Slope"), "dB/Oct"),
-highCutSlopeSlider(*audioProcessor.apvts.getParameter("HighCut Slope"), "db/Oct"),
+CentralFrequencySlider(*audioProcessor.apvts.getParameter("Peak Freq"), "Hz"),
+CentralFrequencyGainSlider(*audioProcessor.apvts.getParameter("Peak Gain"), "dB"),
+TransferFunctionQualityFactorSlider(*audioProcessor.apvts.getParameter("Peak Quality"), ""),
+LowFrequencyCutoffSlider(*audioProcessor.apvts.getParameter("LowCut Freq"), "Hz"),
+HighFrequncyCutoffSlider(*audioProcessor.apvts.getParameter("HighCut Freq"), "Hz"),
+LowFrequncyCutoffSlopeSlider(*audioProcessor.apvts.getParameter("LowCut Slope"), "dB/Oct"),
+HighFrequencyCutoffSlider(*audioProcessor.apvts.getParameter("HighCut Slope"), "db/Oct"),
 
-responseCurveComponent(audioProcessor),
+ProcessedCurveFourierTransformComponent(audioProcessor),
 
-peakFreqSliderAttachment(audioProcessor.apvts, "Peak Freq", peakFreqSlider),
-peakGainSliderAttachment(audioProcessor.apvts, "Peak Gain", peakGainSlider),
-peakQualitySliderAttachment(audioProcessor.apvts, "Peak Quality", peakQualitySlider),
-lowCutFreqSliderAttachment(audioProcessor.apvts, "LowCut Freq", lowCutFreqSlider),
-highCutFreqSliderAttachment(audioProcessor.apvts, "HighCut Freq", highCutFreqSlider),
-lowCutSlopeSliderAttachment(audioProcessor.apvts, "LowCut Slope", lowCutSlopeSlider),
-highCutSlopeSliderAttachment(audioProcessor.apvts, "HighCut Slope", highCutSlopeSlider),
+PeakFrequencySliderAttatch(audioProcessor.apvts, "Peak Freq", CentralFrequencySlider),
+PeakGainSliderAttach(audioProcessor.apvts, "Peak Gain", CentralFrequencyGainSlider),
+PeakQualityAttach(audioProcessor.apvts, "Peak Quality", TransferFunctionQualityFactorSlider),
+LowCutoffAttach(audioProcessor.apvts, "LowCut Freq", LowFrequencyCutoffSlider),
+HightCutoffAttach(audioProcessor.apvts, "HighCut Freq", HighFrequncyCutoffSlider),
+LowSlopeAttatch(audioProcessor.apvts, "LowCut Slope", LowFrequncyCutoffSlopeSlider),
+HighSlopeAttach(audioProcessor.apvts, "HighCut Slope", HighFrequencyCutoffSlider),
 
-lowcutBypassButtonAttachment(audioProcessor.apvts, "LowCut Bypassed", lowcutBypassButton),
-peakBypassButtonAttachment(audioProcessor.apvts, "Peak Bypassed", peakBypassButton),
-highcutBypassButtonAttachment(audioProcessor.apvts, "HighCut Bypassed", highcutBypassButton),
-analyzerEnabledButtonAttachment(audioProcessor.apvts, "Analyzer Enabled", analyzerEnabledButton)
+LowButtonAttatch(audioProcessor.apvts, "LowCut Bypassed", ToogleLowPassButton),
+CentralButtonAttatch(audioProcessor.apvts, "Peak Bypassed", ToggleCentralFrequncyButton),
+HighButtonAttach(audioProcessor.apvts, "HighCut Bypassed", ToggleHighPassButon),
+ToggleAnalyzerButton(audioProcessor.apvts, "Analyzer Enabled", analyzerEnabledButton)
 {
-    peakFreqSlider.labels.add({0.f, "20Hz"});
-    peakFreqSlider.labels.add({1.f, "20kHz"});
+    CentralFrequencySlider.listOfLabels.add({0.f, "20Hz"});
+    CentralFrequencySlider.listOfLabels.add({1.f, "20kHz"});
     
-    peakGainSlider.labels.add({0.f, "-24dB"});
-    peakGainSlider.labels.add({1.f, "+24dB"});
+    CentralFrequencyGainSlider.listOfLabels.add({0.f, "-24dB"});
+    CentralFrequencyGainSlider.listOfLabels.add({1.f, "+24dB"});
     
-    peakQualitySlider.labels.add({0.f, "0.1"});
-    peakQualitySlider.labels.add({1.f, "10.0"});
+    TransferFunctionQualityFactorSlider.listOfLabels.add({0.f, "0.1"});
+    TransferFunctionQualityFactorSlider.listOfLabels.add({1.f, "10.0"});
     
-    lowCutFreqSlider.labels.add({0.f, "20Hz"});
-    lowCutFreqSlider.labels.add({1.f, "20kHz"});
+    LowFrequencyCutoffSlider.listOfLabels.add({0.f, "20Hz"});
+    LowFrequencyCutoffSlider.listOfLabels.add({1.f, "20kHz"});
     
-    highCutFreqSlider.labels.add({0.f, "20Hz"});
-    highCutFreqSlider.labels.add({1.f, "20kHz"});
+    HighFrequncyCutoffSlider.listOfLabels.add({0.f, "20Hz"});
+    HighFrequncyCutoffSlider.listOfLabels.add({1.f, "20kHz"});
     
-    lowCutSlopeSlider.labels.add({0.0f, "12"});
-    lowCutSlopeSlider.labels.add({1.f, "48"});
+    LowFrequncyCutoffSlopeSlider.listOfLabels.add({0.0f, "12"});
+    LowFrequncyCutoffSlopeSlider.listOfLabels.add({1.f, "48"});
     
-    highCutSlopeSlider.labels.add({0.0f, "12"});
-    highCutSlopeSlider.labels.add({1.f, "48"});
+    HighFrequencyCutoffSlider.listOfLabels.add({0.0f, "12"});
+    HighFrequencyCutoffSlider.listOfLabels.add({1.f, "48"});
     
-    for( auto* comp : getComps() )
+    for( auto* comp : GetComponents() )
     {
         addAndMakeVisible(comp);
     }
     
-    peakBypassButton.setLookAndFeel(&lnf);
-    highcutBypassButton.setLookAndFeel(&lnf);
-    lowcutBypassButton.setLookAndFeel(&lnf);
+    ToggleCentralFrequncyButton.setLookAndFeel(&layout);
+    ToggleHighPassButon.setLookAndFeel(&layout);
+    ToogleLowPassButton.setLookAndFeel(&layout);
 
-    analyzerEnabledButton.setLookAndFeel(&lnf);
+    analyzerEnabledButton.setLookAndFeel(&layout);
     
     auto safePtr = juce::Component::SafePointer<ProvaDSPAudioProcessorEditor>(this);
-    peakBypassButton.onClick = [safePtr]()
+    ToggleCentralFrequncyButton.onClick = [safePtr]()
     {
         if( auto* comp = safePtr.getComponent() )
         {
-            auto bypassed = comp->peakBypassButton.getToggleState();
+            auto bypassed = comp->ToggleCentralFrequncyButton.getToggleState();
             
-            comp->peakFreqSlider.setEnabled( !bypassed );
-            comp->peakGainSlider.setEnabled( !bypassed );
-            comp->peakQualitySlider.setEnabled( !bypassed );
+            comp->CentralFrequencySlider.setEnabled( !bypassed );
+            comp->CentralFrequencyGainSlider.setEnabled( !bypassed );
+            comp->TransferFunctionQualityFactorSlider.setEnabled( !bypassed );
         }
     };
     
 
-    lowcutBypassButton.onClick = [safePtr]()
+    ToogleLowPassButton.onClick = [safePtr]()
     {
         if( auto* comp = safePtr.getComponent() )
         {
-            auto bypassed = comp->lowcutBypassButton.getToggleState();
+            auto bypassed = comp->ToogleLowPassButton.getToggleState();
             
-            comp->lowCutFreqSlider.setEnabled( !bypassed );
-            comp->lowCutSlopeSlider.setEnabled( !bypassed );
+            comp->LowFrequencyCutoffSlider.setEnabled( !bypassed );
+            comp->LowFrequncyCutoffSlopeSlider.setEnabled( !bypassed );
         }
     };
     
-    highcutBypassButton.onClick = [safePtr]()
+    ToggleHighPassButon.onClick = [safePtr]()
     {
         if( auto* comp = safePtr.getComponent() )
         {
-            auto bypassed = comp->highcutBypassButton.getToggleState();
+            auto bypassed = comp->ToggleHighPassButon.getToggleState();
             
-            comp->highCutFreqSlider.setEnabled( !bypassed );
-            comp->highCutSlopeSlider.setEnabled( !bypassed );
+            comp->HighFrequncyCutoffSlider.setEnabled( !bypassed );
+            comp->HighFrequencyCutoffSlider.setEnabled( !bypassed );
         }
     };
 
@@ -719,7 +608,7 @@ analyzerEnabledButtonAttachment(audioProcessor.apvts, "Analyzer Enabled", analyz
         if( auto* comp = safePtr.getComponent() )
         {
             auto enabled = comp->analyzerEnabledButton.getToggleState();
-            comp->responseCurveComponent.toggleAnalysisEnablement(enabled);
+            comp->ProcessedCurveFourierTransformComponent.toggleAnalysisEnablement(enabled);
         }
     };
     
@@ -728,9 +617,9 @@ analyzerEnabledButtonAttachment(audioProcessor.apvts, "Analyzer Enabled", analyz
 
 ProvaDSPAudioProcessorEditor::~ProvaDSPAudioProcessorEditor()
 {
-    peakBypassButton.setLookAndFeel(nullptr);
-    highcutBypassButton.setLookAndFeel(nullptr);
-    lowcutBypassButton.setLookAndFeel(nullptr);
+    ToggleCentralFrequncyButton.setLookAndFeel(nullptr);
+    ToggleHighPassButon.setLookAndFeel(nullptr);
+    ToogleLowPassButton.setLookAndFeel(nullptr);
 
     analyzerEnabledButton.setLookAndFeel(nullptr);
 }
@@ -740,21 +629,21 @@ void ProvaDSPAudioProcessorEditor::paint(juce::Graphics &g)
 {
     using namespace juce;
     
-    g.fillAll (Colours::black);
+    g.fillAll (Colours::darkcyan);
     
     Path curve;
     
     auto bounds = getLocalBounds();
     auto center = bounds.getCentre();
     
-    g.setFont(Font("Iosevka Term Slab", 30, 0)); //https://github.com/be5invis/Iosevka
-    
-    String title { "PFM::C++ FOR MUSICIANS" };
-    g.setFont(30);
-    auto titleWidth = g.getCurrentFont().getStringWidth(title);
-    
-    curve.startNewSubPath(center.x, 32);
-    curve.lineTo(center.x - titleWidth * 0.45f, 32);
+//    g.setFont(Font("Iosevka Term Slab", 30, 0)); //https://github.com/be5invis/Iosevka
+//
+//    String title { "DAW BY KRISTEL COCOLI" };
+//    g.setFont(30);
+//    auto titleWidth = g.getCurrentFont().getStringWidth(title);
+//
+//    curve.startNewSubPath(center.x, 32);
+//    curve.lineTo(center.x - titleWidth * 0.45f, 32);
     
     auto cornerSize = 20;
     auto curvePos = curve.getCurrentPosition();
@@ -778,18 +667,18 @@ void ProvaDSPAudioProcessorEditor::paint(juce::Graphics &g)
     
     
     g.setColour(Colour(255u, 154u, 1u));
-    g.drawFittedText(title, bounds, juce::Justification::centredTop, 1);
+//    g.drawFittedText(title, bounds, juce::Justification::centredTop, 1);
     
     g.setColour(Colours::grey);
     g.setFont(14);
-    g.drawFittedText("LowCut", lowCutSlopeSlider.getBounds(), juce::Justification::centredBottom, 1);
-    g.drawFittedText("Peak", peakQualitySlider.getBounds(), juce::Justification::centredBottom, 1);
-    g.drawFittedText("HighCut", highCutSlopeSlider.getBounds(), juce::Justification::centredBottom, 1);
+    g.drawFittedText("LowCut", LowFrequncyCutoffSlopeSlider.getBounds(), juce::Justification::centredBottom, 1);
+    g.drawFittedText("Peak", TransferFunctionQualityFactorSlider.getBounds(), juce::Justification::centredBottom, 1);
+    g.drawFittedText("HighCut", HighFrequencyCutoffSlider.getBounds(), juce::Justification::centredBottom, 1);
     
-    auto buildDate = Time::getCompilationDate().toString(true, false);
-    auto buildTime = Time::getCompilationDate().toString(false, true);
-    g.setFont(12);
-    g.drawFittedText("Build: " + buildDate + "\n" + buildTime, highCutSlopeSlider.getBounds().withY(6), Justification::topRight, 2);
+//    auto buildDate = Time::getCompilationDate().toString(true, false);
+//    auto buildTime = Time::getCompilationDate().toString(false, true);
+//    g.setFont(12);
+//    g.drawFittedText("Build: " + buildDate + "\n" + buildTime, highCutSlopeSlider.getBounds().withY(6), Justification::topRight, 2);
 }
 
 void ProvaDSPAudioProcessorEditor::resized()
@@ -810,43 +699,43 @@ void ProvaDSPAudioProcessorEditor::resized()
     float hRatio = 25.f / 100.f; //JUCE_LIVE_CONSTANT(25) / 100.f;
     auto responseArea = bounds.removeFromTop(bounds.getHeight() * hRatio); //change from 0.33 to 0.25 because I needed peak hz text to not overlap the slider thumb
 
-    responseCurveComponent.setBounds(responseArea);
+    ProcessedCurveFourierTransformComponent.setBounds(responseArea);
     
     bounds.removeFromTop(5);
     
     auto lowCutArea = bounds.removeFromLeft(bounds.getWidth() * 0.33);
     auto highCutArea = bounds.removeFromRight(bounds.getWidth() * 0.5);
     
-    lowcutBypassButton.setBounds(lowCutArea.removeFromTop(25));
-    lowCutFreqSlider.setBounds(lowCutArea.removeFromTop(lowCutArea.getHeight() * 0.5));
-    lowCutSlopeSlider.setBounds(lowCutArea);
+    ToogleLowPassButton.setBounds(lowCutArea.removeFromTop(25));
+    LowFrequencyCutoffSlider.setBounds(lowCutArea.removeFromTop(lowCutArea.getHeight() * 0.5));
+    LowFrequncyCutoffSlopeSlider.setBounds(lowCutArea);
     
-    highcutBypassButton.setBounds(highCutArea.removeFromTop(25));
-    highCutFreqSlider.setBounds(highCutArea.removeFromTop(highCutArea.getHeight() * 0.5));
-    highCutSlopeSlider.setBounds(highCutArea);
+    ToggleHighPassButon.setBounds(highCutArea.removeFromTop(25));
+    HighFrequncyCutoffSlider.setBounds(highCutArea.removeFromTop(highCutArea.getHeight() * 0.5));
+    HighFrequencyCutoffSlider.setBounds(highCutArea);
     
-    peakBypassButton.setBounds(bounds.removeFromTop(25));
-    peakFreqSlider.setBounds(bounds.removeFromTop(bounds.getHeight() * 0.33));
-    peakGainSlider.setBounds(bounds.removeFromTop(bounds.getHeight() * 0.5));
-    peakQualitySlider.setBounds(bounds);
+    ToggleCentralFrequncyButton.setBounds(bounds.removeFromTop(25));
+    CentralFrequencySlider.setBounds(bounds.removeFromTop(bounds.getHeight() * 0.33));
+    CentralFrequencyGainSlider.setBounds(bounds.removeFromTop(bounds.getHeight() * 0.5));
+    TransferFunctionQualityFactorSlider.setBounds(bounds);
 }
 
-std::vector<juce::Component*> ProvaDSPAudioProcessorEditor::getComps()
+std::vector<juce::Component*> ProvaDSPAudioProcessorEditor::GetComponents()
 {
     return
     {
-        &peakFreqSlider,
-        &peakGainSlider,
-        &peakQualitySlider,
-        &lowCutFreqSlider,
-        &highCutFreqSlider,
-        &lowCutSlopeSlider,
-        &highCutSlopeSlider,
-        &responseCurveComponent,
+        &CentralFrequencySlider,
+        &CentralFrequencyGainSlider,
+        &TransferFunctionQualityFactorSlider,
+        &LowFrequencyCutoffSlider,
+        &HighFrequncyCutoffSlider,
+        &LowFrequncyCutoffSlopeSlider,
+        &HighFrequencyCutoffSlider,
+        &ProcessedCurveFourierTransformComponent,
         
-        &lowcutBypassButton,
-        &peakBypassButton,
-        &highcutBypassButton,
+        &ToogleLowPassButton,
+        &ToggleCentralFrequncyButton,
+        &ToggleHighPassButon,
         &analyzerEnabledButton
     };
 }
