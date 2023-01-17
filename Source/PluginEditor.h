@@ -17,222 +17,174 @@ enum FFTOrder
 };
 
 template<typename BlockType>
-struct FFTDataGenerator
+struct SpectrumAnalyzer
 {
-    /**
-     produces the FFT data from an audio buffer.
-     */
-    void produceFFTDataForRendering(const juce::AudioBuffer<float>& audioData, const float negativeInfinity)
+    void ApplyFftAnalysis(const juce::AudioBuffer<float>& audioData, const float negativeInfinity)
     {
-        const auto fftSize = getFFTSize();
+        const auto SpectrumSize = GetSpectrumSize();
         
-        fftData.assign(fftData.size(), 0);
+        ProcessedData.assign(ProcessedData.size(), 0);
         auto* readIndex = audioData.getReadPointer(0);
-        std::copy(readIndex, readIndex + fftSize, fftData.begin());
+        std::copy(readIndex, readIndex + SpectrumSize, ProcessedData.begin());
+        Boundary->multiplyWithWindowingTable (ProcessedData.data(), SpectrumSize);
+        Fft->performFrequencyOnlyForwardTransform (ProcessedData.data());
         
-        // first apply a windowing function to our data
-        window->multiplyWithWindowingTable (fftData.data(), fftSize);       // [1]
+        int TotalBins = (int)SpectrumSize / 2;
         
-        // then render our FFT data..
-        forwardFFT->performFrequencyOnlyForwardTransform (fftData.data());  // [2]
-        
-        int numBins = (int)fftSize / 2;
-        
-        //normalize the fft values.
-        for( int i = 0; i < numBins; ++i )
+        for( int index = 0; index < TotalBins; ++index )
         {
-            auto v = fftData[i];
-//            fftData[i] /= (float) numBins;
-            if( !std::isinf(v) && !std::isnan(v) )
-            {
-                v /= float(numBins);
-            }
-            else
-            {
-                v = 0.f;
-            }
-            fftData[i] = v;
+            auto v = ProcessedData[index];
+            if( !std::isinf(v) && !std::isnan(v) ) v /= float(TotalBins);
+            else v = 0.f;
+            ProcessedData[index] = v;
         }
         
-        //convert them to decibels
-        for( int i = 0; i < numBins; ++i )
-        {
-            fftData[i] = juce::Decibels::gainToDecibels(fftData[i], negativeInfinity);
-        }
+        for( int index = 0; index < TotalBins; ++index )
+            ProcessedData[index] = juce::Decibels::gainToDecibels(ProcessedData[index], negativeInfinity);
         
-        fftDataFifo.push(fftData);
+        FftBuffer.push(ProcessedData);
     }
     
-    void changeOrder(FFTOrder newOrder)
+    void Rearrange(FFTOrder NewOrder)
     {
-        //when you change order, recreate the window, forwardFFT, fifo, fftData
-        //also reset the fifoIndex
-        //things that need recreating should be created on the heap via std::make_unique<>
+        OrderedData = NewOrder;
+        auto fftSize = GetSpectrumSize();
         
-        order = newOrder;
-        auto fftSize = getFFTSize();
+        Fft = std::make_unique<juce::dsp::FFT>(OrderedData);
+        Boundary = std::make_unique<juce::dsp::WindowingFunction<float>>(fftSize, juce::dsp::WindowingFunction<float>::blackmanHarris);
         
-        forwardFFT = std::make_unique<juce::dsp::FFT>(order);
-        window = std::make_unique<juce::dsp::WindowingFunction<float>>(fftSize, juce::dsp::WindowingFunction<float>::blackmanHarris);
-        
-        fftData.clear();
-        fftData.resize(fftSize * 2, 0);
+        ProcessedData.clear();
+        ProcessedData.resize(fftSize * 2, 0);
 
-        fftDataFifo.prepare(fftData.size());
+        FftBuffer.prepare(ProcessedData.size());
     }
-    //==============================================================================
-    int getFFTSize() const { return 1 << order; }
-    int getNumAvailableFFTDataBlocks() const { return fftDataFifo.getNumAvailableForReading(); }
-    //==============================================================================
-    bool getFFTData(BlockType& fftData) { return fftDataFifo.pull(fftData); }
+
+    int GetSpectrumSize() const { return 1 << OrderedData; }
+    int GetNumberOfDataBlocks() const { return FftBuffer.getNumAvailableForReading(); }
+
+    bool GetData(BlockType& fftData) { return FftBuffer.pull(fftData); }
 private:
-    FFTOrder order;
-    BlockType fftData;
-    std::unique_ptr<juce::dsp::FFT> forwardFFT;
-    std::unique_ptr<juce::dsp::WindowingFunction<float>> window;
+    FFTOrder OrderedData;
+    BlockType ProcessedData;
+    std::unique_ptr<juce::dsp::FFT> Fft;
+    std::unique_ptr<juce::dsp::WindowingFunction<float>> Boundary;
     
-    Fifo<BlockType> fftDataFifo;
+    Fifo<BlockType> FftBuffer;
 };
 
 template<typename PathType>
-struct AnalyzerPathGenerator
+struct FFTSignalComponent
 {
-    /*
-     converts 'renderData[]' into a juce::Path
-     */
-    void generatePath(const std::vector<float>& renderData,
-                      juce::Rectangle<float> fftBounds,
-                      int fftSize,
-                      float binWidth,
-                      float negativeInfinity)
+    void GenerateSignal(const std::vector<float>& renderData,juce::Rectangle<float> fftBounds,int fftSize,float binWidth,float negativeInfinity)
     {
-        auto top = fftBounds.getY();
-        auto bottom = fftBounds.getHeight();
-        auto width = fftBounds.getWidth();
+        auto UpperValue = fftBounds.getY();
+        auto LowerValue = fftBounds.getHeight();
+        auto Length = fftBounds.getWidth();
 
-        int numBins = (int)fftSize / 2;
+        int TotalNumberOfBins = (int)fftSize / 2;
 
         PathType p;
         p.preallocateSpace(3 * (int)fftBounds.getWidth());
 
-        auto map = [bottom, top, negativeInfinity](float v)
+        auto map = [LowerValue, UpperValue, negativeInfinity](float v)
         {
-            return juce::jmap(v,
-                              negativeInfinity, 0.f,
-                              float(bottom+10),   top);
+            return juce::jmap(v, negativeInfinity, 0.f, float(LowerValue+10),   UpperValue);
         };
 
         auto y = map(renderData[0]);
-
-//        jassert( !std::isnan(y) && !std::isinf(y) );
-        if( std::isnan(y) || std::isinf(y) )
-            y = bottom;
+        if( std::isnan(y) || std::isinf(y) ) y = LowerValue;
         
         p.startNewSubPath(0, y);
 
-        const int pathResolution = 2; //you can draw line-to's every 'pathResolution' pixels.
+        const int LineThickness = 2;
 
-        for( int binNum = 1; binNum < numBins; binNum += pathResolution )
+        for( int IndexOfBin = 1; IndexOfBin < TotalNumberOfBins; IndexOfBin += LineThickness )
         {
-            y = map(renderData[binNum]);
-
-//            jassert( !std::isnan(y) && !std::isinf(y) );
+            y = map(renderData[IndexOfBin]);
 
             if( !std::isnan(y) && !std::isinf(y) )
             {
-                auto binFreq = binNum * binWidth;
-                auto normalizedBinX = juce::mapFromLog10(binFreq, 20.f, 20000.f);
-                int binX = std::floor(normalizedBinX * width);
+                auto Frequency = IndexOfBin * binWidth;
+                auto XCoordinateNormalized = juce::mapFromLog10(Frequency, 20.f, 20000.f);
+                int binX = std::floor(XCoordinateNormalized * Length);
                 p.lineTo(binX, y);
             }
         }
 
-        pathFifo.push(p);
+        Buffer.push(p);
     }
 
-    int getNumPathsAvailable() const
-    {
-        return pathFifo.getNumAvailableForReading();
-    }
+    int getNumPathsAvailable() const { return Buffer.getNumAvailableForReading();}
 
-    bool getPath(PathType& path)
-    {
-        return pathFifo.pull(path);
-    }
+    bool getPath(PathType& path) { return Buffer.pull(path); }
+    
 private:
-    Fifo<PathType> pathFifo;
+    Fifo<PathType> Buffer;
 };
 
-struct LookAndFeel : juce::LookAndFeel_V4
+struct CustomLayout : juce::LookAndFeel_V4
 {
-    void drawRotarySlider (juce::Graphics&,
-                           int x, int y, int width, int height,
-                           float sliderPosProportional,
-                           float rotaryStartAngle,
-                           float rotaryEndAngle,
-                           juce::Slider&) override;
+    void ShowSliders (juce::Graphics&, int x, int y, int width, int height, float sliderPosProportional,float rotaryStartAngle,float rotaryEndAngle, juce::Slider& ) override {};
     
-    void drawToggleButton (juce::Graphics &g,
-                           juce::ToggleButton & toggleButton,
-                           bool shouldDrawButtonAsHighlighted,
-                           bool shouldDrawButtonAsDown) override;
+    void ShowToggleButtons (juce::Graphics &g, juce::ToggleButton & toggleButton, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override {};
 };
 
-struct RotarySliderWithLabels : juce::Slider
+struct DSPSlider : juce::Slider
 {
-    RotarySliderWithLabels(juce::RangedAudioParameter& rap, const juce::String& unitSuffix) :
-    juce::Slider(juce::Slider::SliderStyle::RotaryHorizontalVerticalDrag,
+    DSPSlider(juce::RangedAudioParameter& rap, const juce::String& unitSuffix) :
+    juce::Slider(juce::Slider::SliderStyle::LinearHorizontal,
                  juce::Slider::TextEntryBoxPosition::NoTextBox),
-    param(&rap),
-    suffix(unitSuffix)
+    parameters(&rap),
+    unitOfMeasure(unitSuffix)
     {
-        setLookAndFeel(&lnf);
     }
     
-    ~RotarySliderWithLabels()
+    ~DSPSlider()
     {
         setLookAndFeel(nullptr);
     }
     
-    struct LabelPos
+    struct LabelPosition
     {
         float pos;
         juce::String label;
     };
     
-    juce::Array<LabelPos> labels;
+    // List where we will store our labels
+    juce::Array<LabelPosition> listOfLabels;
     
+    // Default functions that come from inheritance from the juce library
     void paint(juce::Graphics& g) override;
     juce::Rectangle<int> getSliderBounds() const;
     int getTextHeight() const { return 14; }
     juce::String getDisplayString() const;
+    //Private memebrs of the struct
 private:
-    LookAndFeel lnf;
-    
-    juce::RangedAudioParameter* param;
-    juce::String suffix;
+    CustomLayout layout;
+    juce::RangedAudioParameter* parameters;
+    juce::String unitOfMeasure;
 };
 
-struct PathProducer
+struct SignlarTracer
 {
-    PathProducer(SingleChannelSampleFifo<ProvaDSPAudioProcessor::BlockType>& scsf) :
-    leftChannelFifo(&scsf)
+    SignlarTracer(SingleChannelSampleFifo<ProvaDSPAudioProcessor::BlockType>& SingleChannelBuffer) :
+    leftChannelFifo(&SingleChannelBuffer)
     {
-        leftChannelFFTDataGenerator.changeOrder(FFTOrder::order2048);
-        monoBuffer.setSize(1, leftChannelFFTDataGenerator.getFFTSize());
+        LeftChannelFFTAnalyzer.Rearrange(FFTOrder::order2048);
+        AudioBuffer.setSize(1, LeftChannelFFTAnalyzer.GetSpectrumSize());
     }
     void process(juce::Rectangle<float> fftBounds, double sampleRate);
-    juce::Path getPath() { return leftChannelFFTPath; }
+    juce::Path getPath() { return LeftChannelFFTSignal; }
+    // Private members of the struct
 private:
     SingleChannelSampleFifo<ProvaDSPAudioProcessor::BlockType>* leftChannelFifo;
     
-    juce::AudioBuffer<float> monoBuffer;
+    juce::AudioBuffer<float> AudioBuffer;
+    SpectrumAnalyzer<std::vector<float>> LeftChannelFFTAnalyzer;
     
-    FFTDataGenerator<std::vector<float>> leftChannelFFTDataGenerator;
+    FFTSignalComponent<juce::Path> signalTracer;
     
-    AnalyzerPathGenerator<juce::Path> pathProducer;
-    
-    juce::Path leftChannelFFTPath;
+    juce::Path LeftChannelFFTSignal;
 };
 
 struct ResponseCurveComponent: juce::Component,
@@ -242,125 +194,100 @@ juce::Timer
     ResponseCurveComponent(ProvaDSPAudioProcessor&);
     ~ResponseCurveComponent();
     
+    // Default functions from inheritance, not to be changed
     void parameterValueChanged (int parameterIndex, float newValue) override;
-
     void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override { }
-    
     void timerCallback() override;
-    
     void paint(juce::Graphics& g) override;
     void resized() override;
     
     void toggleAnalysisEnablement(bool enabled)
     {
-        shouldShowFFTAnalysis = enabled;
+        EnableFFT = enabled;
     }
 private:
-    ProvaDSPAudioProcessor& audioProcessor;
+    ProvaDSPAudioProcessor& DSPProcessor;
+    bool EnableFFT = true;
+    juce::Atomic<bool> RealoadParametersEvent { false };
+    MonoChain MonoChannelChain;
 
-    bool shouldShowFFTAnalysis = true;
+    void TraceTransferFunctionFrequencyCurve();
+    
+    juce::Path TransferFunctionCurve;
 
-    juce::Atomic<bool> parametersChanged { false };
+    void UpdateBuffer();
+    void ShowPlotGrid(juce::Graphics& g);
+    void ShowPlotLabels(juce::Graphics& g);
     
-    MonoChain monoChain;
+    std::vector<float> GetAllFrequncies();
+    std::vector<float> GetAllGains();
+    std::vector<float> GetXCoordinates(const std::vector<float>& Frequencies, float LeftChannel, float Width);
 
-    void updateResponseCurve();
+    juce::Rectangle<int> GetArea();
+    juce::Rectangle<int> GetAnalyzerAres();
     
-    juce::Path responseCurve;
-
-    void updateChain();
-    
-    void drawBackgroundGrid(juce::Graphics& g);
-    void drawTextLabels(juce::Graphics& g);
-    
-    std::vector<float> getFrequencies();
-    std::vector<float> getGains();
-    std::vector<float> getXs(const std::vector<float>& freqs, float left, float width);
-
-    juce::Rectangle<int> getRenderArea();
-    
-    juce::Rectangle<int> getAnalysisArea();
-    
-    PathProducer leftPathProducer, rightPathProducer;
+    SignlarTracer LeftSignalChannel, RightSignalChannel;
 };
-//==============================================================================
-struct PowerButton : juce::ToggleButton { };
 
-struct AnalyzerButton : juce::ToggleButton
+struct ToggleButton : juce::ToggleButton { };
+
+struct DSPToggleButton : juce::ToggleButton
 {
     void resized() override
     {
-        auto bounds = getLocalBounds();
-        auto insetRect = bounds.reduced(4);
+        auto Boundaries = getLocalBounds();
+        auto Intersecion = Boundaries.reduced(4);
         
-        randomPath.clear();
-        
+        RandomSignalGenerator.clear();
         juce::Random r;
         
-        randomPath.startNewSubPath(insetRect.getX(),
-                                   insetRect.getY() + insetRect.getHeight() * r.nextFloat());
+        RandomSignalGenerator.startNewSubPath(Intersecion.getX(), Intersecion.getY() + Intersecion.getHeight() * r.nextFloat());
+        auto initialValue = Intersecion.getX() + 1;
         
-        for( auto x = insetRect.getX() + 1; x < insetRect.getRight(); x += 2 )
-        {
-            randomPath.lineTo(x,
-                              insetRect.getY() + insetRect.getHeight() * r.nextFloat());
-        }
+        for( auto j = initialValue; j < Intersecion.getRight(); j = j + 2 )
+            RandomSignalGenerator.lineTo(j, Intersecion.getY() + Intersecion.getHeight() * r.nextFloat());
     }
     
-    juce::Path randomPath;
+    juce::Path RandomSignalGenerator;
 };
-/**
-*/
+
+
 class ProvaDSPAudioProcessorEditor  : public juce::AudioProcessorEditor
 {
 public:
     ProvaDSPAudioProcessorEditor (ProvaDSPAudioProcessor&);
     ~ProvaDSPAudioProcessorEditor() override;
-
-    //==============================================================================
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    // This reference is provided as a quick way for your editor to
-    // access the processor object that created it.
     ProvaDSPAudioProcessor& audioProcessor;
 
+    // Declaration of the sliders
+    DSPSlider
+        CentralFrequencySlider, CentralFrequencyGainSlider,TransferFunctionQualityFactorSlider,
+        LowFrequencyCutoffSlider,HighFrequncyCutoffSlider,
+        LowFrequncyCutoffSlopeSlider, HighFrequencyCutoffSlider;
     
-    RotarySliderWithLabels peakFreqSlider,
-    peakGainSlider,
-    peakQualitySlider,
-    lowCutFreqSlider,
-    highCutFreqSlider,
-    lowCutSlopeSlider,
-    highCutSlopeSlider;
+    ResponseCurveComponent ProcessedCurveFourierTransformComponent;
     
-    ResponseCurveComponent responseCurveComponent;
+    using TreeState = juce::AudioProcessorValueTreeState;
+    using Attachments = TreeState::SliderAttachment;
     
-    using APVTS = juce::AudioProcessorValueTreeState;
-    using Attachment = APVTS::SliderAttachment;
-    
-    Attachment peakFreqSliderAttachment,
-                peakGainSliderAttachment,
-                peakQualitySliderAttachment,
-                lowCutFreqSliderAttachment,
-                highCutFreqSliderAttachment,
-                lowCutSlopeSliderAttachment,
-                highCutSlopeSliderAttachment;
+    Attachments
+        PeakFrequencySliderAttatch, PeakGainSliderAttach, PeakQualityAttach,
+        LowCutoffAttach, HightCutoffAttach, LowSlopeAttatch, HighSlopeAttach;
 
-    std::vector<juce::Component*> getComps();
+    std::vector<juce::Component*> GetComponents();
     
-    PowerButton lowcutBypassButton, peakBypassButton, highcutBypassButton;
-    AnalyzerButton analyzerEnabledButton;
+    ToggleButton ToogleLowPassButton, ToggleCentralFrequncyButton, ToggleHighPassButon;
+    DSPToggleButton analyzerEnabledButton;
     
-    using ButtonAttachment = APVTS::ButtonAttachment;
+    using ButtonAttachment = TreeState::ButtonAttachment;
     
-    ButtonAttachment lowcutBypassButtonAttachment,
-                        peakBypassButtonAttachment,
-                        highcutBypassButtonAttachment,
-                        analyzerEnabledButtonAttachment;
+    ButtonAttachment LowButtonAttatch, CentralButtonAttatch, HighButtonAttach, ToggleAnalyzerButton;
     
-    LookAndFeel lnf;
+    CustomLayout layout;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProvaDSPAudioProcessorEditor)
 };
