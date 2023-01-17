@@ -155,9 +155,9 @@ struct DSPSlider : juce::Slider
     
     // Default functions that come from inheritance from the juce library
     void paint(juce::Graphics& g) override;
-    juce::Rectangle<int> getSliderBounds() const;
+    juce::Rectangle<int> GetBoundariesOfSlider() const;
     int getTextHeight() const { return 14; }
-    juce::String getDisplayString() const;
+    juce::String GetString() const;
     //Private memebrs of the struct
 private:
     CustomLayout layout;
