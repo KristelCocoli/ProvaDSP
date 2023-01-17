@@ -11,98 +11,95 @@ void DSPSlider::paint(juce::Graphics &g)
 {
     using namespace juce;
     
-    auto startAng = degreesToRadians(180.f + 45.f);
-    auto endAng = degreesToRadians(180.f - 45.f) + MathConstants<float>::twoPi;
-    auto range = getRange();
-    auto sliderBounds = getSliderBounds();
+    auto InitialAngle = degreesToRadians(180.f + 45.f);
+    auto FinalPosition = degreesToRadians(180.f - 45.f) + MathConstants<float>::twoPi;
+    auto FullRangeOfSlider = getRange();
+    auto SliderBoundaries = GetBoundariesOfSlider();
     
-    getLookAndFeel().ShowSliders(g, sliderBounds.getX(), sliderBounds.getY(), sliderBounds.getWidth(), sliderBounds.getHeight(), jmap(getValue(), range.getStart(), range.getEnd(), 0.0, 1.0), startAng, endAng, *this);
+    getLookAndFeel().ShowSliders(g, SliderBoundaries.getX(), SliderBoundaries.getY(), SliderBoundaries.getWidth(), SliderBoundaries.getHeight(), jmap(getValue(), FullRangeOfSlider.getStart(), FullRangeOfSlider.getEnd(), 0.0, 1.0), InitialAngle, FinalPosition, *this);
     
-    auto center = sliderBounds.toFloat().getCentre();
-    auto radius = sliderBounds.getWidth() * 0.5f;
+    auto CentralCoordinate = SliderBoundaries.toFloat().getCentre();
+    auto RadiusOfRoundSlider = SliderBoundaries.getWidth() * 0.5f;
     
     g.setColour(Colours::red);
     g.setFont(getTextHeight());
     
-    auto numChoices = listOfLabels.size();
-    for( int i = 0; i < numChoices; ++i )
+    auto Choices = listOfLabels.size();
+    for( int index = 0; index < Choices; ++index )
     {
-        auto pos = listOfLabels[i].pos;
+        auto Position = listOfLabels[index].pos;
         
-        auto ang = jmap(pos, 0.f, 1.f, startAng, endAng);
+        auto SelectedAngle = jmap(Position, 0.f, 1.f, InitialAngle, FinalPosition);
         
-        auto c = center.getPointOnCircumference(radius + getTextHeight() * 0.5f + 1, ang);
+        auto c = CentralCoordinate.getPointOnCircumference(RadiusOfRoundSlider + getTextHeight() * 0.5f + 1, SelectedAngle);
         
         Rectangle<float> r;
-        auto str = listOfLabels[i].label;
-        r.setSize(g.getCurrentFont().getStringWidth(str), getTextHeight());
+        auto label = listOfLabels[index].label;
+        r.setSize(g.getCurrentFont().getStringWidth(label), getTextHeight());
         r.setCentre(c);
         r.setY(r.getY() + getTextHeight());
         
-        g.drawFittedText(str, r.toNearestInt(), juce::Justification::centred, 1);
+        g.drawFittedText(label, r.toNearestInt(), juce::Justification::centred, 1);
     }
     
 }
 
-juce::Rectangle<int> DSPSlider::getSliderBounds() const
+juce::Rectangle<int> DSPSlider::GetBoundariesOfSlider() const
 {
-    auto bounds = getLocalBounds();
+    auto Boundaries = getLocalBounds();
     
-    auto size = juce::jmin(bounds.getWidth(), bounds.getHeight());
+    auto Size = juce::jmin(Boundaries.getWidth(), Boundaries.getHeight());
     
-    size -= getTextHeight() * 2;
+    Size -= getTextHeight() * 2;
     juce::Rectangle<int> r;
-    r.setSize(size, size);
-    r.setCentre(bounds.getCentreX(), 0);
+    r.setSize(Size, Size);
+    r.setCentre(Boundaries.getCentreX(), 0);
     r.setY(2);
     
     return r;
     
 }
 
-juce::String DSPSlider::getDisplayString() const
+juce::String DSPSlider::GetString() const
 {
-    if( auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(parameters) )
-        return choiceParam->getCurrentChoiceName();
+    if( auto* ParameterOfChoice = dynamic_cast<juce::AudioParameterChoice*>(parameters) )
+        return ParameterOfChoice->getCurrentChoiceName();
     
-    juce::String str;
-    bool addK = false;
+    juce::String Value;
+    bool addP = false;
     
-    if( auto* floatParam = dynamic_cast<juce::AudioParameterFloat*>(parameters) )
+    if( auto* FloatPrecisionPointVariable = dynamic_cast<juce::AudioParameterFloat*>(parameters) )
     {
-        float val = getValue();
+        float ValueOfParameter = getValue();
         
-        if( val > 999.f )
+        if( ValueOfParameter > 999.f )
         {
-            val /= 1000.f;
-            addK = true;
+            ValueOfParameter /= 1000.f;
+            addP = true;
         }
         
-        str = juce::String(val, (addK ? 2 : 0));
+        Value = juce::String(ValueOfParameter, (addP ? 2 : 0));
     }
 
     if( unitOfMeasure.isNotEmpty() )
     {
-        str << " ";
-        if( addK )
-            str << "k";
+        Value << " ";
+        if( addP )
+            Value << "k";
         
-        str << unitOfMeasure;
+        Value << unitOfMeasure;
     }
     
-    return str;
+    return Value;
 }
 
 
 ResponseCurveComponent::ResponseCurveComponent(ProvaDSPAudioProcessor& p) :
-DSPProcessor(p),
-LeftSignalChannel(DSPProcessor.leftChannelFifo),
-RightSignalChannel(DSPProcessor.rightChannelFifo)
+    DSPProcessor(p), LeftSignalChannel(DSPProcessor.leftChannelFifo), RightSignalChannel(DSPProcessor.rightChannelFifo)
 {
-    const auto& params = DSPProcessor.getParameters();
-    for( auto param : params )
-        param->addListener(this);
-    
+    const auto& Params = DSPProcessor.getParameters();
+    for( auto Param : Params )
+        Param->addListener(this);
 
     UpdateBuffer();
     
@@ -111,60 +108,58 @@ RightSignalChannel(DSPProcessor.rightChannelFifo)
 
 ResponseCurveComponent::~ResponseCurveComponent()
 {
-    const auto& params = DSPProcessor.getParameters();
-    for( auto param : params )
-    {
-        param->removeListener(this);
-    }
+    const auto& Params = DSPProcessor.getParameters();
+    for( auto Param : Params )
+        Param->removeListener(this);
 }
 
 void ResponseCurveComponent::TraceTransferFunctionFrequencyCurve()
 {
     using namespace juce;
-    auto responseArea = GetAnalyzerAres();
+    auto Area = GetAnalyzerAres();
     
-    auto w = responseArea.getWidth();
+    auto Width = Area.getWidth();
     
-    auto& lowcut = MonoChannelChain.get<ChainPositions::LowCut>();
-    auto& peak = MonoChannelChain.get<ChainPositions::Peak>();
-    auto& highcut = MonoChannelChain.get<ChainPositions::HighCut>();
+    auto& LowCutoffFreq = MonoChannelChain.get<ChainPositions::LowCut>();
+    auto& PeakFreq = MonoChannelChain.get<ChainPositions::Peak>();
+    auto& HighFreqCutOff = MonoChannelChain.get<ChainPositions::HighCut>();
     
     auto sampleRate = DSPProcessor.getSampleRate();
     
     std::vector<double> mags;
     
-    mags.resize(w);
+    mags.resize(Width);
     
-    for( int i = 0; i < w; ++i )
+    for( int i = 0; i < Width; ++i )
     {
         double mag = 1.f;
-        auto freq = mapToLog10(double(i) / double(w), 20.0, 20000.0);
+        auto Frequencies = mapToLog10(double(i) / double(Width), 20.0, 20000.0);
         
         if(! MonoChannelChain.isBypassed<ChainPositions::Peak>() )
-            mag *= peak.coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            mag *= PeakFreq.coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
         
         if( !MonoChannelChain.isBypassed<ChainPositions::LowCut>() )
         {
-            if( !lowcut.isBypassed<0>() )
-                mag *= lowcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if( !lowcut.isBypassed<1>() )
-                mag *= lowcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if( !lowcut.isBypassed<2>() )
-                mag *= lowcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if( !lowcut.isBypassed<3>() )
-                mag *= lowcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if( !LowCutoffFreq.isBypassed<0>() )
+                mag *= LowCutoffFreq.get<0>().coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
+            if( !LowCutoffFreq.isBypassed<1>() )
+                mag *= LowCutoffFreq.get<1>().coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
+            if( !LowCutoffFreq.isBypassed<2>() )
+                mag *= LowCutoffFreq.get<2>().coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
+            if( !LowCutoffFreq.isBypassed<3>() )
+                mag *= LowCutoffFreq.get<3>().coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
         }
         
         if( !MonoChannelChain.isBypassed<ChainPositions::HighCut>() )
         {
-            if( !highcut.isBypassed<0>() )
-                mag *= highcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if( !highcut.isBypassed<1>() )
-                mag *= highcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if( !highcut.isBypassed<2>() )
-                mag *= highcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if( !highcut.isBypassed<3>() )
-                mag *= highcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if( !HighFreqCutOff.isBypassed<0>() )
+                mag *= HighFreqCutOff.get<0>().coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
+            if( !HighFreqCutOff.isBypassed<1>() )
+                mag *= HighFreqCutOff.get<1>().coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
+            if( !HighFreqCutOff.isBypassed<2>() )
+                mag *= HighFreqCutOff.get<2>().coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
+            if( !HighFreqCutOff.isBypassed<3>() )
+                mag *= HighFreqCutOff.get<3>().coefficients->getMagnitudeForFrequency(Frequencies, sampleRate);
         }
             
         mags[i] = Decibels::gainToDecibels(mag);
@@ -172,57 +167,58 @@ void ResponseCurveComponent::TraceTransferFunctionFrequencyCurve()
     
     TransferFunctionCurve.clear();
     
-    const double outputMin = responseArea.getBottom();
-    const double outputMax = responseArea.getY();
-    auto map = [outputMin, outputMax](double input)
+    const double MinimumOutput = Area.getBottom();
+    const double MaximumOutput = Area.getY();
+    auto map = [MinimumOutput, MaximumOutput](double input)
     {
-        return jmap(input, -24.0, 24.0, outputMin, outputMax);
+        return jmap(input, -24.0, 24.0, MinimumOutput, MaximumOutput);
     };
     
-    TransferFunctionCurve.startNewSubPath(responseArea.getX(), map(mags.front()));
+    TransferFunctionCurve.startNewSubPath(Area.getX(), map(mags.front()));
     
     for( size_t i = 1; i < mags.size(); ++i )
-        TransferFunctionCurve.lineTo(responseArea.getX() + i, map(mags[i]));
+        TransferFunctionCurve.lineTo(Area.getX() + i, map(mags[i]));
 }
 
 void ResponseCurveComponent::paint (juce::Graphics& g)
 {
     using namespace juce;
+    // Set background color
     g.fillAll (Colours::whitesmoke);
 
     ShowPlotGrid(g);
     
-    auto responseArea = GetAnalyzerAres();
+    auto TransferFunctionArea = GetAnalyzerAres();
     
     if( EnableFFT )
     {
-        auto leftChannelFFTPath = LeftSignalChannel.getPath();
-        leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+        auto LeftSamplesFFT = LeftSignalChannel.getPath();
+        LeftSamplesFFT.applyTransform(AffineTransform().translation(TransferFunctionArea.getX(), TransferFunctionArea.getY()));
         
         g.setColour(Colours::darkblue);
-        g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
+        g.strokePath(LeftSamplesFFT, PathStrokeType(1.f));
         
-        auto rightChannelFFTPath = RightSignalChannel.getPath();
-        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+        auto RightChannelFFT = RightSignalChannel.getPath();
+        RightChannelFFT.applyTransform(AffineTransform().translation(TransferFunctionArea.getX(), TransferFunctionArea.getY()));
         
         g.setColour(Colours::darkorange);
-        g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
+        g.strokePath(RightChannelFFT, PathStrokeType(1.f));
     }
     
-    // Colour of transfer function
+    // Colour of frequency response of transfer function
     g.setColour(Colours::red);
     g.strokePath(TransferFunctionCurve, PathStrokeType(2.f));
     
-    Path border;
+    Path Boundaries;
     
-    border.setUsingNonZeroWinding(false);
+    Boundaries.setUsingNonZeroWinding(false);
     
-    border.addRoundedRectangle(GetArea(), 4);
-    border.addRectangle(getLocalBounds());
+    Boundaries.addRoundedRectangle(GetArea(), 4);
+    Boundaries.addRectangle(getLocalBounds());
     
     g.setColour(Colours::whitesmoke);
     
-    g.fillPath(border);
+    g.fillPath(Boundaries);
     
     ShowPlotLabels(g);
     
@@ -249,46 +245,46 @@ std::vector<float> ResponseCurveComponent::GetAllGains()
     };
 }
 
-std::vector<float> ResponseCurveComponent::GetXCoordinates(const std::vector<float> &freqs, float left, float width)
+std::vector<float> ResponseCurveComponent::GetXCoordinates(const std::vector<float> &frequencies, float left, float width)
 {
-    std::vector<float> xs;
-    for( auto f : freqs )
+    std::vector<float> XCoordinates;
+    for( auto f : frequencies )
     {
-        auto normX = juce::mapFromLog10(f, 20.f, 20000.f);
-        xs.push_back( left + width * normX );
+        auto NormalizedXCoordinates = juce::mapFromLog10(f, 20.f, 20000.f);
+        XCoordinates.push_back( left + width * NormalizedXCoordinates );
     }
     
-    return xs;
+    return XCoordinates;
 }
 
 void ResponseCurveComponent::ShowPlotGrid(juce::Graphics &g)
 {
     using namespace juce;
-    auto freqs = GetAllFrequncies();
+    auto Frequencies = GetAllFrequncies();
     
-    auto renderArea = GetAnalyzerAres();
-    auto left = renderArea.getX();
-    auto right = renderArea.getRight();
-    auto top = renderArea.getY();
-    auto bottom = renderArea.getBottom();
-    auto width = renderArea.getWidth();
+    auto Area = GetAnalyzerAres();
+    auto XAxis = Area.getX();
+    auto MaxXCoordinate = Area.getRight();
+    auto YAxis = Area.getY();
+    auto MinimumYCoordinate = Area.getBottom();
+    auto SpectrumSize = Area.getWidth();
     
-    auto xs = GetXCoordinates(freqs, left, width);
+    auto xs = GetXCoordinates(Frequencies, XAxis, SpectrumSize);
     
     g.setColour(Colours::dimgrey);
     for( auto x : xs )
     {
-        g.drawVerticalLine(x, top, bottom);
+        g.drawVerticalLine(x, YAxis, MinimumYCoordinate);
     }
     
     auto gain = GetAllGains();
     
     for( auto gDb : gain )
     {
-        auto y = jmap(gDb, -24.f, 24.f, float(bottom), float(top));
+        auto y = jmap(gDb, -24.f, 24.f, float(MinimumYCoordinate), float(YAxis));
         
         g.setColour(gDb == 0.f ? Colour(0u, 172u, 1u) : Colours::darkgrey );
-        g.drawHorizontalLine(y, left, right);
+        g.drawHorizontalLine(y, XAxis, MaxXCoordinate);
     }
 }
 
@@ -296,22 +292,22 @@ void ResponseCurveComponent::ShowPlotLabels(juce::Graphics &g)
 {
     using namespace juce;
     g.setColour(Colours::lightgrey);
-    const int fontHeight = 10;
-    g.setFont(fontHeight);
+    const int FontSize = 12;
+    g.setFont(FontSize);
     
-    auto renderArea = GetAnalyzerAres();
-    auto left = renderArea.getX();
+    auto Area = GetAnalyzerAres();
+    auto XAxis = Area.getX();
     
-    auto top = renderArea.getY();
-    auto bottom = renderArea.getBottom();
-    auto width = renderArea.getWidth();
+    auto YAxis = Area.getY();
+    auto MinimumYCoordinate = Area.getBottom();
+    auto MaximumXCoordinate = Area.getWidth();
     
-    auto freqs = GetAllFrequncies();
-    auto xs = GetXCoordinates(freqs, left, width);
+    auto Frequencies = GetAllFrequncies();
+    auto xs = GetXCoordinates(Frequencies, XAxis, MaximumXCoordinate);
     
-    for( int i = 0; i < freqs.size(); ++i )
+    for( int i = 0; i < Frequencies.size(); ++i )
     {
-        auto f = freqs[i];
+        auto f = Frequencies[i];
         auto x = xs[i];
 
         bool addK = false;
@@ -331,7 +327,7 @@ void ResponseCurveComponent::ShowPlotLabels(juce::Graphics &g)
 
         Rectangle<int> r;
 
-        r.setSize(textWidth, fontHeight);
+        r.setSize(textWidth, FontSize);
         r.setCentre(x, 0);
         r.setY(1);
         
@@ -342,7 +338,7 @@ void ResponseCurveComponent::ShowPlotLabels(juce::Graphics &g)
 
     for( auto gDb : gain )
     {
-        auto y = jmap(gDb, -24.f, 24.f, float(bottom), float(top));
+        auto y = jmap(gDb, -24.f, 24.f, float(MinimumYCoordinate), float(YAxis));
         
         String str;
         if( gDb > 0 )
@@ -352,7 +348,7 @@ void ResponseCurveComponent::ShowPlotLabels(juce::Graphics &g)
         auto textWidth = g.getCurrentFont().getStringWidth(str);
         
         Rectangle<int> r;
-        r.setSize(textWidth, fontHeight);
+        r.setSize(textWidth, FontSize);
         r.setX(getWidth() - textWidth);
         r.setCentre(r.getCentreX(), y);
         
@@ -365,7 +361,7 @@ void ResponseCurveComponent::ShowPlotLabels(juce::Graphics &g)
 
         r.setX(1);
         textWidth = g.getCurrentFont().getStringWidth(str);
-        r.setSize(textWidth, fontHeight);
+        r.setSize(textWidth, FontSize);
         g.setColour(Colours::lightgrey);
         g.drawFittedText(str, r, juce::Justification::centredLeft, 1);
     }
@@ -386,34 +382,30 @@ void ResponseCurveComponent::parameterValueChanged(int parameterIndex, float new
 
 void SignlarTracer::process(juce::Rectangle<float> fftBounds, double sampleRate)
 {
-    juce::AudioBuffer<float> tempIncomingBuffer;
+    juce::AudioBuffer<float> TempBuffer;
     while( leftChannelFifo->getNumCompleteBuffersAvailable() > 0 )
     {
-        if( leftChannelFifo->getAudioBuffer(tempIncomingBuffer) )
+        if( leftChannelFifo->getAudioBuffer(TempBuffer) )
         {
-            auto size = tempIncomingBuffer.getNumSamples();
+            auto size = TempBuffer.getNumSamples();
 
-            juce::FloatVectorOperations::copy(AudioBuffer.getWritePointer(0, 0),
-                                              AudioBuffer.getReadPointer(0, size),
-                                              AudioBuffer.getNumSamples() - size);
+            juce::FloatVectorOperations::copy(AudioBuffer.getWritePointer(0, 0),AudioBuffer.getReadPointer(0, size), AudioBuffer.getNumSamples() - size);
 
-            juce::FloatVectorOperations::copy(AudioBuffer.getWritePointer(0, AudioBuffer.getNumSamples() - size),
-                                              tempIncomingBuffer.getReadPointer(0, 0),
-                                              size);
+            juce::FloatVectorOperations::copy(AudioBuffer.getWritePointer(0, AudioBuffer.getNumSamples() - size),TempBuffer.getReadPointer(0, 0), size);
             
             LeftChannelFFTAnalyzer.ApplyFftAnalysis(AudioBuffer, -48.f);
         }
     }
     
-    const auto fftSize = LeftChannelFFTAnalyzer.GetSpectrumSize();
-    const auto binWidth = sampleRate / double(fftSize);
+    const auto SpectrumSize = LeftChannelFFTAnalyzer.GetSpectrumSize();
+    const auto BinWidth = sampleRate / double(SpectrumSize);
 
     while( LeftChannelFFTAnalyzer.GetNumberOfDataBlocks() > 0 )
     {
         std::vector<float> fftData;
         if( LeftChannelFFTAnalyzer.GetData( fftData) )
         {
-            signalTracer.GenerateSignal(fftData, fftBounds, fftSize, binWidth, -48.f);
+            signalTracer.GenerateSignal(fftData, fftBounds, SpectrumSize, BinWidth, -48.f);
         }
     }
     
@@ -427,11 +419,11 @@ void ResponseCurveComponent::timerCallback()
 {
     if( EnableFFT )
     {
-        auto fftBounds = GetAnalyzerAres().toFloat();
-        auto sampleRate = DSPProcessor.getSampleRate();
+        auto FftSize = GetAnalyzerAres().toFloat();
+        auto SamplingFrequency = DSPProcessor.getSampleRate();
         
-        LeftSignalChannel.process(fftBounds, sampleRate);
-        RightSignalChannel.process(fftBounds, sampleRate);
+        LeftSignalChannel.process(FftSize, SamplingFrequency);
+        RightSignalChannel.process(FftSize, SamplingFrequency);
     }
 
     if( RealoadParametersEvent.compareAndSetBool(false, true) )
@@ -445,46 +437,46 @@ void ResponseCurveComponent::timerCallback()
 
 void ResponseCurveComponent::UpdateBuffer()
 {
-    auto chainSettings = getChainSettings(DSPProcessor.apvts);
+    auto ChainConfigurations = getChainSettings(DSPProcessor.apvts);
     
-    MonoChannelChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
-    MonoChannelChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
-    MonoChannelChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+    MonoChannelChain.setBypassed<ChainPositions::LowCut>(ChainConfigurations.lowCutBypassed);
+    MonoChannelChain.setBypassed<ChainPositions::Peak>(ChainConfigurations.peakBypassed);
+    MonoChannelChain.setBypassed<ChainPositions::HighCut>(ChainConfigurations.highCutBypassed);
     
-    auto peakCoefficients = makePeakFilter(chainSettings, DSPProcessor.getSampleRate());
+    auto peakCoefficients = makePeakFilter(ChainConfigurations, DSPProcessor.getSampleRate());
     updateCoefficients(MonoChannelChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
     
-    auto lowCutCoefficients = makeLowCutFilter(chainSettings, DSPProcessor.getSampleRate());
-    auto highCutCoefficients = makeHighCutFilter(chainSettings, DSPProcessor.getSampleRate());
+    auto LowCutoffParameters = makeLowCutFilter(ChainConfigurations, DSPProcessor.getSampleRate());
+    auto HighFrequencyCutoffParameters = makeHighCutFilter(ChainConfigurations, DSPProcessor.getSampleRate());
     
     updateCutFilter(MonoChannelChain.get<ChainPositions::LowCut>(),
-                    lowCutCoefficients,
-                    chainSettings.lowCutSlope);
+                    LowCutoffParameters,
+                    ChainConfigurations.lowCutSlope);
     
     updateCutFilter(MonoChannelChain.get<ChainPositions::HighCut>(),
-                    highCutCoefficients,
-                    chainSettings.highCutSlope);
+                    HighFrequencyCutoffParameters,
+                    ChainConfigurations.highCutSlope);
 }
 
 juce::Rectangle<int> ResponseCurveComponent::GetArea()
 {
-    auto bounds = getLocalBounds();
+    auto Boundaries = getLocalBounds();
     
-    bounds.removeFromTop(12);
-    bounds.removeFromBottom(2);
-    bounds.removeFromLeft(20);
-    bounds.removeFromRight(20);
+    Boundaries.removeFromTop(12);
+    Boundaries.removeFromBottom(2);
+    Boundaries.removeFromLeft(20);
+    Boundaries.removeFromRight(20);
     
-    return bounds;
+    return Boundaries;
 }
 
 
 juce::Rectangle<int> ResponseCurveComponent::GetAnalyzerAres()
 {
-    auto bounds = GetArea();
-    bounds.removeFromTop(4);
-    bounds.removeFromBottom(4);
-    return bounds;
+    auto Boundaries = GetArea();
+    Boundaries.removeFromTop(4);
+    Boundaries.removeFromBottom(4);
+    return Boundaries;
 }
 
 ProvaDSPAudioProcessorEditor::ProvaDSPAudioProcessorEditor (ProvaDSPAudioProcessor& p)
@@ -608,30 +600,30 @@ void ProvaDSPAudioProcessorEditor::paint(juce::Graphics &g)
     
     g.fillAll (Colours::darkcyan);
     
-    Path curve;
+    Path Signal;
     
     auto bounds = getLocalBounds();
     auto center = bounds.getCentre();
     
-    auto cornerSize = 20;
-    auto curvePos = curve.getCurrentPosition();
-    curve.quadraticTo(curvePos.getX() - cornerSize, curvePos.getY(),
-                      curvePos.getX() - cornerSize, curvePos.getY() - 16);
-    curvePos = curve.getCurrentPosition();
-    curve.quadraticTo(curvePos.getX(), 2,
-                      curvePos.getX() - cornerSize, 2);
+    auto Corner = 20;
+    auto CurvePosition = Signal.getCurrentPosition();
+    Signal.quadraticTo(CurvePosition.getX() - Corner, CurvePosition.getY(),
+                      CurvePosition.getX() - Corner, CurvePosition.getY() - 16);
+    CurvePosition = Signal.getCurrentPosition();
+    Signal.quadraticTo(CurvePosition.getX(), 2,
+                      CurvePosition.getX() - Corner, 2);
     
-    curve.lineTo({0.f, 2.f});
-    curve.lineTo(0.f, 0.f);
-    curve.lineTo(center.x, 0.f);
-    curve.closeSubPath();
+    Signal.lineTo({0.f, 2.f});
+    Signal.lineTo(0.f, 0.f);
+    Signal.lineTo(center.x, 0.f);
+    Signal.closeSubPath();
     
     g.setColour(Colour(97u, 18u, 167u));
-    g.fillPath(curve);
+    g.fillPath(Signal);
     
-    curve.applyTransform(AffineTransform().scaled(-1, 1));
-    curve.applyTransform(AffineTransform().translated(getWidth(), 0));
-    g.fillPath(curve);
+    Signal.applyTransform(AffineTransform().scaled(-1, 1));
+    Signal.applyTransform(AffineTransform().translated(getWidth(), 0));
+    g.fillPath(Signal);
     
     
     g.setColour(Colour(255u, 154u, 1u));
@@ -646,10 +638,10 @@ void ProvaDSPAudioProcessorEditor::paint(juce::Graphics &g)
 
 void ProvaDSPAudioProcessorEditor::resized()
 {
-    auto bounds = getLocalBounds();
-    bounds.removeFromTop(4);
+    auto Boundaries = getLocalBounds();
+    Boundaries.removeFromTop(4);
     
-    auto analyzerEnabledArea = bounds.removeFromTop(25);
+    auto analyzerEnabledArea = Boundaries.removeFromTop(25);
     
     analyzerEnabledArea.setWidth(50);
     analyzerEnabledArea.setX(5);
@@ -657,30 +649,32 @@ void ProvaDSPAudioProcessorEditor::resized()
     
     analyzerEnabledButton.setBounds(analyzerEnabledArea);
     
-    bounds.removeFromTop(5);
+    Boundaries.removeFromTop(5);
     
-    float hRatio = 50.f / 100.f;
-    auto responseArea = bounds.removeFromTop(bounds.getHeight() * hRatio);
+    // Declare ratios as variables to easily change them
+    float HalfRatio = 50.f / 100.f;
+    float OneThirdRatio = 33.f / 100.f;
+    auto responseArea = Boundaries.removeFromTop(Boundaries.getHeight() * HalfRatio);
 
     ProcessedCurveFourierTransformComponent.setBounds(responseArea);
     
-    bounds.removeFromTop(5);
+    Boundaries.removeFromTop(5);
     
-    auto lowCutArea = bounds.removeFromTop(bounds.getHeight() * 0.33);
-    auto highCutArea = bounds.removeFromBottom(bounds.getHeight() * 0.5);
+    auto LowFrequencyCutoffBoundary = Boundaries.removeFromTop(Boundaries.getHeight() * OneThirdRatio);
+    auto HighFrequencyCutoffBoundary = Boundaries.removeFromBottom(Boundaries.getHeight() * HalfRatio);
     
-    ToogleLowPassButton.setBounds(lowCutArea.removeFromLeft(25));
-    LowFrequencyCutoffSlider.setBounds(lowCutArea.removeFromLeft(lowCutArea.getWidth() * 0.5));
-    LowFrequncyCutoffSlopeSlider.setBounds(lowCutArea);
+    ToogleLowPassButton.setBounds(LowFrequencyCutoffBoundary.removeFromLeft(25));
+    LowFrequencyCutoffSlider.setBounds(LowFrequencyCutoffBoundary.removeFromLeft(LowFrequencyCutoffBoundary.getWidth() * HalfRatio));
+    LowFrequncyCutoffSlopeSlider.setBounds(LowFrequencyCutoffBoundary);
     
-    ToggleHighPassButon.setBounds(highCutArea.removeFromLeft(25));
-    HighFrequncyCutoffSlider.setBounds(highCutArea.removeFromLeft(highCutArea.getWidth() * 0.5));
-    HighFrequencyCutoffSlider.setBounds(highCutArea);
+    ToggleHighPassButon.setBounds(HighFrequencyCutoffBoundary.removeFromLeft(25));
+    HighFrequncyCutoffSlider.setBounds(HighFrequencyCutoffBoundary.removeFromLeft(HighFrequencyCutoffBoundary.getWidth() *HalfRatio));
+    HighFrequencyCutoffSlider.setBounds(HighFrequencyCutoffBoundary);
     
-    ToggleCentralFrequncyButton.setBounds(bounds.removeFromLeft(25));
-    CentralFrequencySlider.setBounds(bounds.removeFromLeft(bounds.getWidth() * 0.33));
-    CentralFrequencyGainSlider.setBounds(bounds.removeFromLeft(bounds.getWidth() * 0.5));
-    TransferFunctionQualityFactorSlider.setBounds(bounds);
+    ToggleCentralFrequncyButton.setBounds(Boundaries.removeFromLeft(25));
+    CentralFrequencySlider.setBounds(Boundaries.removeFromLeft(Boundaries.getWidth() * OneThirdRatio));
+    CentralFrequencyGainSlider.setBounds(Boundaries.removeFromLeft(Boundaries.getWidth() * HalfRatio));
+    TransferFunctionQualityFactorSlider.setBounds(Boundaries);
 }
 
 std::vector<juce::Component*> ProvaDSPAudioProcessorEditor::GetComponents()
